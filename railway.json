@@ -1,0 +1,5 @@
+{
+  "deploy": {
+    "startCommand": "python bot_fixed_자기소개수정.py"
+  }
+}
