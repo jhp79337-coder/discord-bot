@@ -29,9 +29,9 @@ LOG_CHANNEL_NAME = "추방-로그"
 GRACE_DAYS = 3
 CHECK_MINUTES = 30
 
-# 2026년 기준 출생연도만으로 분류
+# 2026년 기준
 # 00~07 = 성인
-# 08~26 = 미성년
+# 08~26 = 미자
 ADULT_CUTOFF_YEAR = 2007
 
 # ------------------------------------------------------------
@@ -39,18 +39,18 @@ ADULT_CUTOFF_YEAR = 2007
 # ------------------------------------------------------------
 
 ROLE_IDS = {
-    "unverified": 1544031900295893112,  # 미인증
-    "male": 1544031878812532858,        # 남자
-    "female": 1544031884227518525,      # 여자
-    "adult": 1544031894809616475,       # 성인
-    "minor": 1544031889533182043,       # 미자
+    "unverified": 1544031900295893112,
+    "male": 1544031878812532858,
+    "female": 1544031884227518525,
+    "adult": 1544031894809616475,
+    "minor": 1544031889533182043,
 }
 
 # ------------------------------------------------------------
 # AI 수다
 # ------------------------------------------------------------
 
-# 채널 이름에 이 글자가 들어가면 자동 AI 수다
+# 채널 이름에 "메인채팅"이 들어가면 자동 대화
 CHAT_CHANNEL_KEYWORD = "메인채팅"
 
 MAX_HISTORY_MESSAGES = 12
@@ -287,9 +287,7 @@ def convert_birth_year(two_digit):
     return 1900 + two_digit
 
 
-def is_adult_from_birth_year(
-    birth_year
-):
+def is_adult_from_birth_year(birth_year):
 
     return birth_year <= ADULT_CUTOFF_YEAR
 
@@ -318,11 +316,8 @@ def parse_intro(text):
         "ㄴ",
         "남"
     ):
-
         gender = "male"
-
     else:
-
         gender = "female"
 
     return {
@@ -345,30 +340,15 @@ async def apply_intro_roles(
         member.guild
     )
 
-    unverified = roles.get(
-        "unverified"
-    )
-
-    male = roles.get(
-        "male"
-    )
-
-    female = roles.get(
-        "female"
-    )
-
-    adult = roles.get(
-        "adult"
-    )
-
-    minor = roles.get(
-        "minor"
-    )
+    unverified = roles.get("unverified")
+    male = roles.get("male")
+    female = roles.get("female")
+    adult = roles.get("adult")
+    minor = roles.get("minor")
 
     add_roles = []
     remove_roles = []
 
-    # 성별 역할
     if gender == "male":
 
         if male:
@@ -385,10 +365,7 @@ async def apply_intro_roles(
         if male:
             remove_roles.append(male)
 
-    # 나이 역할
-    if is_adult_from_birth_year(
-        birth_year
-    ):
+    if is_adult_from_birth_year(birth_year):
 
         if adult:
             add_roles.append(adult)
@@ -404,7 +381,6 @@ async def apply_intro_roles(
         if adult:
             remove_roles.append(adult)
 
-    # 미인증 제거
     if unverified:
         remove_roles.append(unverified)
 
@@ -455,19 +431,15 @@ async def on_member_join(member):
 
     members_data[str(member.id)] = {
 
-        "joined":
-            utcnow().isoformat(),
+        "joined": utcnow().isoformat(),
 
-        "last_activity":
-            utcnow().isoformat(),
+        "last_activity": utcnow().isoformat(),
 
         "intro": False,
 
-        "birth_year":
-            None,
+        "birth_year": None,
 
-        "gender":
-            None
+        "gender": None
     }
 
     save_data()
@@ -554,31 +526,26 @@ def should_ai_chat(message):
     if not content:
         return False
 
-    # 명령어 제외
     if content.startswith("!"):
         return False
 
-    # 봇 멘션
     if (
         bot.user
         and bot.user in message.mentions
     ):
         return True
 
-    # 봇아
     lowered = content.lower()
 
     if lowered.startswith("봇아"):
         return True
 
-    # 봇 뭐해
     if re.match(
         r"^봇[\s,!?]",
         content
     ):
         return True
 
-    # 메인채팅 자동 대화
     if chat_enabled(
         message.guild.id
     ):
@@ -610,10 +577,12 @@ async def generate_ai_reply(message):
 
     if ai_client is None:
 
+        print("[AI 오류] OPENAI_API_KEY가 없습니다.")
+
         return (
             "AI 수다 기능이 아직 설정 안 됐어 ㅋㅋ\n"
-            "Railway Variables에 "
-            "`OPENAI_API_KEY`를 넣어줘!"
+            "Railway Variables의 "
+            "`OPENAI_API_KEY`를 확인해줘!"
         )
 
     user_text = clean_bot_mention(
@@ -648,6 +617,13 @@ async def generate_ai_reply(message):
 
     try:
 
+        print(
+            f"[AI 요청] "
+            f"모델={OPENAI_MODEL} "
+            f"사용자={message.author} "
+            f"내용={user_text[:100]}"
+        )
+
         response = await ai_client.responses.create(
 
             model=OPENAI_MODEL,
@@ -664,6 +640,10 @@ async def generate_ai_reply(message):
         ).strip()
 
         if not answer:
+
+            print(
+                "[AI 오류] 응답 내용이 비어 있습니다."
+            )
 
             return (
                 "어... 갑자기 할 말이 "
@@ -695,18 +675,27 @@ async def generate_ai_reply(message):
                 + "..."
             )
 
+        print("[AI 성공] 답변 생성 완료")
+
         return answer
 
     except Exception as e:
 
-        print(
-            f"[AI 오류] "
-            f"{type(e).__name__}: {e}"
-        )
+        # ----------------------------------------------------
+        # 중요:
+        # 기존처럼 오류를 숨기지 않고 Railway 로그에
+        # 실제 오류 내용을 표시함
+        # ----------------------------------------------------
+
+        print("=" * 60)
+        print("[AI 오류 발생]")
+        print(f"오류 종류: {type(e).__name__}")
+        print(f"오류 내용: {e}")
+        print("=" * 60)
 
         return (
-            "잠깐 AI 연결이 꼬였어 ㅋㅋ\n"
-            "Railway의 API 설정을 확인해줘."
+            "AI 연결 중 오류가 발생했어 ㅠㅠ\n"
+            "잠시 후 다시 말해줘!"
         )
 
 
@@ -731,7 +720,6 @@ async def on_message(message):
             member
         )
 
-        # 활동 기록
         data["last_activity"] = (
             utcnow().isoformat()
         )
@@ -809,10 +797,6 @@ async def on_message(message):
 
                         pass
 
-                    # ------------------------------------------------
-                    # 실제 역할 멘션
-                    # ------------------------------------------------
-
                     if role_success:
 
                         roles = await ensure_roles(
@@ -855,13 +839,12 @@ async def on_message(message):
 
                             await message.channel.send(
                                 f"{member.mention} "
-                                f"자기소개 확인했어! ✅\n"
+                                f"자기소개 확인했어! [✅]\n"
                                 f"역할 지급 완료: "
                                 f"{role_text}"
                             )
 
                         except discord.HTTPException:
-
                             pass
 
                 save_data()
@@ -897,7 +880,6 @@ async def on_message(message):
                     f"[AI 답변 전송 오류] {e}"
                 )
 
-    # 명령어
     await bot.process_commands(
         message
     )
@@ -987,21 +969,18 @@ async def check_members():
                 current - joined
                 < timedelta(days=GRACE_DAYS)
             ):
-
                 continue
 
             if data.get(
                 "intro",
                 False
             ):
-
                 continue
 
             if (
                 current - last_activity
                 < timedelta(days=GRACE_DAYS)
             ):
-
                 continue
 
             try:
@@ -1238,21 +1217,18 @@ async def manual_check(ctx):
                 current - joined
                 < timedelta(days=GRACE_DAYS)
             ):
-
                 continue
 
             if data.get(
                 "intro",
                 False
             ):
-
                 continue
 
             if (
                 current - last_activity
                 < timedelta(days=GRACE_DAYS)
             ):
-
                 continue
 
             count += 1
@@ -1479,7 +1455,6 @@ async def on_command_error(
         error,
         commands.CommandNotFound
     ):
-
         return
 
     if isinstance(
