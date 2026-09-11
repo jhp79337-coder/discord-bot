@@ -7,17 +7,21 @@ import json
 import os
 import re
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from google import genai
 
 # ============================================================
-# 새벽에너를기다리는중 자동관리봇 + AI 수다
+# 새벽에너를기다리는중 자동관리봇 + Gemini AI 수다
 # ============================================================
 
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.6-luna")
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv(
+    "GEMINI_MODEL",
+    "gemini-2.5-flash"
+)
 
 # ------------------------------------------------------------
 # 기본 설정
@@ -50,7 +54,6 @@ ROLE_IDS = {
 # AI 수다
 # ------------------------------------------------------------
 
-# 채널 이름에 "메인채팅"이 들어가면 자동 대화
 CHAT_CHANNEL_KEYWORD = "메인채팅"
 
 MAX_HISTORY_MESSAGES = 12
@@ -74,12 +77,12 @@ bot = commands.Bot(
 )
 
 # ------------------------------------------------------------
-# OpenAI
+# Gemini
 # ------------------------------------------------------------
 
 ai_client = (
-    AsyncOpenAI(api_key=OPENAI_API_KEY)
-    if OPENAI_API_KEY
+    genai.Client(api_key=GEMINI_API_KEY)
+    if GEMINI_API_KEY
     else None
 )
 
@@ -122,23 +125,32 @@ def utcnow():
 # ------------------------------------------------------------
 
 def load_json_file(path, default):
+
     if not path.exists():
         return default
 
     try:
+
         return json.loads(
-            path.read_text(encoding="utf-8")
+            path.read_text(
+                encoding="utf-8"
+            )
         )
+
     except Exception as e:
+
         print(
             f"[JSON 불러오기 오류] "
             f"{path.name}: {e}"
         )
+
         return default
 
 
 def save_json_file(path, data):
+
     try:
+
         path.write_text(
             json.dumps(
                 data,
@@ -147,7 +159,9 @@ def save_json_file(path, data):
             ),
             encoding="utf-8"
         )
+
     except Exception as e:
+
         print(
             f"[JSON 저장 오류] "
             f"{path.name}: {e}"
@@ -166,6 +180,7 @@ chat_settings = load_json_file(
 
 
 def save_data():
+
     save_json_file(
         DATA_FILE,
         members_data
@@ -173,6 +188,7 @@ def save_data():
 
 
 def save_chat_settings():
+
     save_json_file(
         CHAT_SETTINGS_FILE,
         chat_settings
@@ -190,11 +206,21 @@ def ensure_member(member: discord.Member):
     if key not in members_data:
 
         members_data[key] = {
-            "joined": utcnow().isoformat(),
-            "last_activity": utcnow().isoformat(),
-            "intro": False,
-            "birth_year": None,
-            "gender": None
+
+            "joined":
+                utcnow().isoformat(),
+
+            "last_activity":
+                utcnow().isoformat(),
+
+            "intro":
+                False,
+
+            "birth_year":
+                None,
+
+            "gender":
+                None
         }
 
         save_data()
@@ -316,8 +342,11 @@ def parse_intro(text):
         "ㄴ",
         "남"
     ):
+
         gender = "male"
+
     else:
+
         gender = "female"
 
     return {
@@ -340,11 +369,25 @@ async def apply_intro_roles(
         member.guild
     )
 
-    unverified = roles.get("unverified")
-    male = roles.get("male")
-    female = roles.get("female")
-    adult = roles.get("adult")
-    minor = roles.get("minor")
+    unverified = roles.get(
+        "unverified"
+    )
+
+    male = roles.get(
+        "male"
+    )
+
+    female = roles.get(
+        "female"
+    )
+
+    adult = roles.get(
+        "adult"
+    )
+
+    minor = roles.get(
+        "minor"
+    )
 
     add_roles = []
     remove_roles = []
@@ -365,7 +408,9 @@ async def apply_intro_roles(
         if male:
             remove_roles.append(male)
 
-    if is_adult_from_birth_year(birth_year):
+    if is_adult_from_birth_year(
+        birth_year
+    ):
 
         if adult:
             add_roles.append(adult)
@@ -431,15 +476,20 @@ async def on_member_join(member):
 
     members_data[str(member.id)] = {
 
-        "joined": utcnow().isoformat(),
+        "joined":
+            utcnow().isoformat(),
 
-        "last_activity": utcnow().isoformat(),
+        "last_activity":
+            utcnow().isoformat(),
 
-        "intro": False,
+        "intro":
+            False,
 
-        "birth_year": None,
+        "birth_year":
+            None,
 
-        "gender": None
+        "gender":
+            None
     }
 
     save_data()
@@ -500,7 +550,7 @@ async def on_member_join(member):
 
 
 # ------------------------------------------------------------
-# AI 수다
+# AI 수다 설정
 # ------------------------------------------------------------
 
 def chat_enabled(guild_id):
@@ -573,16 +623,23 @@ def clean_bot_mention(text):
     return text.strip()
 
 
+# ------------------------------------------------------------
+# Gemini AI 답변
+# ------------------------------------------------------------
+
 async def generate_ai_reply(message):
 
     if ai_client is None:
 
-        print("[AI 오류] OPENAI_API_KEY가 없습니다.")
+        print(
+            "[Gemini 오류] "
+            "GEMINI_API_KEY가 없습니다."
+        )
 
         return (
             "AI 수다 기능이 아직 설정 안 됐어 ㅋㅋ\n"
             "Railway Variables의 "
-            "`OPENAI_API_KEY`를 확인해줘!"
+            "`GEMINI_API_KEY`를 확인해줘!"
         )
 
     user_text = clean_bot_mention(
@@ -601,48 +658,86 @@ async def generate_ai_reply(message):
         chat_history[channel_key]
     )
 
-    input_messages = []
+    conversation = []
 
     for item in history:
-        input_messages.append(item)
 
-    input_messages.append({
+        role = item.get(
+            "role"
+        )
 
-        "role": "user",
+        if role == "assistant":
 
-        "content":
-            f"{message.author.display_name}: "
-            f"{user_text}"
-    })
+            role = "model"
+
+        elif role == "user":
+
+            role = "user"
+
+        else:
+
+            continue
+
+        conversation.append(
+            {
+                "role": role,
+                "parts": [
+                    {
+                        "text":
+                            item.get(
+                                "content",
+                                ""
+                            )
+                    }
+                ]
+            }
+        )
+
+    conversation.append(
+        {
+            "role": "user",
+            "parts": [
+                {
+                    "text":
+                        f"{message.author.display_name}: "
+                        f"{user_text}"
+                }
+            ]
+        }
+    )
 
     try:
 
         print(
-            f"[AI 요청] "
-            f"모델={OPENAI_MODEL} "
+            f"[Gemini 요청] "
+            f"모델={GEMINI_MODEL} "
             f"사용자={message.author} "
             f"내용={user_text[:100]}"
         )
 
-        response = await ai_client.responses.create(
+        response = (
+            await ai_client.aio.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=conversation,
+                config={
+                    "system_instruction":
+                        AI_SYSTEM_PROMPT,
 
-            model=OPENAI_MODEL,
-
-            instructions=AI_SYSTEM_PROMPT,
-
-            input=input_messages,
-
-            max_output_tokens=500
+                    "max_output_tokens":
+                        500
+                }
+            )
         )
 
         answer = (
-            response.output_text or ""
+            response.text or ""
         ).strip()
 
         if not answer:
 
             print(
-                "[AI 오류] 응답 내용이 비어 있습니다."
+                "[Gemini 오류] "
+                "응답 내용이 비어 있습니다."
             )
 
             return (
@@ -650,21 +745,21 @@ async def generate_ai_reply(message):
                 "생각 안 났다 ㅋㅋ"
             )
 
-        chat_history[channel_key].append({
+        chat_history[channel_key].append(
+            {
+                "role": "user",
+                "content":
+                    f"{message.author.display_name}: "
+                    f"{user_text}"
+            }
+        )
 
-            "role": "user",
-
-            "content":
-                f"{message.author.display_name}: "
-                f"{user_text}"
-        })
-
-        chat_history[channel_key].append({
-
-            "role": "assistant",
-
-            "content": answer
-        })
+        chat_history[channel_key].append(
+            {
+                "role": "assistant",
+                "content": answer
+            }
+        )
 
         if len(answer) > MAX_AI_REPLY_LENGTH:
 
@@ -675,22 +770,23 @@ async def generate_ai_reply(message):
                 + "..."
             )
 
-        print("[AI 성공] 답변 생성 완료")
+        print(
+            "[Gemini 성공] 답변 생성 완료"
+        )
 
         return answer
 
     except Exception as e:
 
-        # ----------------------------------------------------
-        # 중요:
-        # 기존처럼 오류를 숨기지 않고 Railway 로그에
-        # 실제 오류 내용을 표시함
-        # ----------------------------------------------------
-
         print("=" * 60)
-        print("[AI 오류 발생]")
-        print(f"오류 종류: {type(e).__name__}")
-        print(f"오류 내용: {e}")
+        print("[Gemini 오류 발생]")
+        print(
+            f"오류 종류: "
+            f"{type(e).__name__}"
+        )
+        print(
+            f"오류 내용: {e}"
+        )
         print("=" * 60)
 
         return (
@@ -820,17 +916,21 @@ async def on_message(message):
                         role_mentions = []
 
                         if gender_role:
+
                             role_mentions.append(
                                 gender_role.mention
                             )
 
                         if age_role:
+
                             role_mentions.append(
                                 age_role.mention
                             )
 
                         role_text = (
-                            " / ".join(role_mentions)
+                            " / ".join(
+                                role_mentions
+                            )
                             if role_mentions
                             else "역할을 찾을 수 없음"
                         )
@@ -845,6 +945,7 @@ async def on_message(message):
                             )
 
                         except discord.HTTPException:
+
                             pass
 
                 save_data()
@@ -969,18 +1070,21 @@ async def check_members():
                 current - joined
                 < timedelta(days=GRACE_DAYS)
             ):
+
                 continue
 
             if data.get(
                 "intro",
                 False
             ):
+
                 continue
 
             if (
                 current - last_activity
                 < timedelta(days=GRACE_DAYS)
             ):
+
                 continue
 
             try:
@@ -1131,9 +1235,11 @@ async def status(
 
     gender_text = {
 
-        "male": "남자",
+        "male":
+            "남자",
 
-        "female": "여자"
+        "female":
+            "여자"
 
     }.get(
 
@@ -1217,18 +1323,21 @@ async def manual_check(ctx):
                 current - joined
                 < timedelta(days=GRACE_DAYS)
             ):
+
                 continue
 
             if data.get(
                 "intro",
                 False
             ):
+
                 continue
 
             if (
                 current - last_activity
                 < timedelta(days=GRACE_DAYS)
             ):
+
                 continue
 
             count += 1
@@ -1283,7 +1392,10 @@ async def reset_intro(
                 role_type
             )
 
-            if role and role in member.roles:
+            if (
+                role
+                and role in member.roles
+            ):
 
                 remove_roles.append(
                     role
@@ -1344,12 +1456,15 @@ async def chat_toggle(
 
         state = (
             "켜짐"
-            if chat_enabled(ctx.guild.id)
+            if chat_enabled(
+                ctx.guild.id
+            )
             else "꺼짐"
         )
 
         await ctx.send(
-            f"💬 메인채팅 자동 대화: **{state}**\n\n"
+            f"💬 메인채팅 자동 대화: "
+            f"**{state}**\n\n"
             f"`!대화 켜기`\n"
             f"`!대화 끄기`"
         )
@@ -1455,6 +1570,7 @@ async def on_command_error(
         error,
         commands.CommandNotFound
     ):
+
         return
 
     if isinstance(
@@ -1519,19 +1635,19 @@ async def on_ready():
 
     print(
         f"AI 모델: "
-        f"{OPENAI_MODEL}"
+        f"{GEMINI_MODEL}"
     )
 
-    if OPENAI_API_KEY:
+    if GEMINI_API_KEY:
 
         print(
-            "OpenAI API Key: 확인됨"
+            "Gemini API Key: 확인됨"
         )
 
     else:
 
         print(
-            "OpenAI API Key: 없음"
+            "Gemini API Key: 없음"
         )
 
     print("=" * 60)
