@@ -6,56 +6,40 @@ from collections import defaultdict, deque
 import json
 import os
 import re
-
+from difflib import SequenceMatcher
 from dotenv import load_dotenv
-from google import genai
-
 
 # ============================================================
-# 새벽에너를기다리는중 자동관리봇 + Gemini AI 수다
+# 새벽에너를기다리는중 자동관리봇
+# + 자기소개 역할 자동 지급
+# + 자동 추방
+# + 로컬 학습형 수다
+#
+# Gemini / OpenAI 등 외부 AI API 사용 안 함
 # ============================================================
 
 load_dotenv()
 
-
-# ============================================================
-# 환경변수
-# ============================================================
-
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-# Railway Variables에 GEMINI_MODEL이 있으면
-# 그 값이 우선 적용됨
-GEMINI_MODEL = os.getenv(
-    "GEMINI_MODEL",
-    "gemini-3.6-flash"
-)
-
-
-# ============================================================
+# ------------------------------------------------------------
 # 기본 설정
-# ============================================================
+# ------------------------------------------------------------
 
 INTRO_KEYWORD = "자기소개"
-
 LOG_CHANNEL_NAME = "추방-로그"
 
 GRACE_DAYS = 3
-
 CHECK_MINUTES = 30
-
 
 # 2026년 기준
 # 00~07 = 성인
 # 08~26 = 미자
 ADULT_CUTOFF_YEAR = 2007
 
-
-# ============================================================
+# ------------------------------------------------------------
 # Discord 역할 ID
-# ============================================================
+# ------------------------------------------------------------
 
 ROLE_IDS = {
     "unverified": 1544031900295893112,
@@ -65,105 +49,67 @@ ROLE_IDS = {
     "minor": 1544031889533182043,
 }
 
+# ------------------------------------------------------------
+# 로컬 학습 설정
+# ------------------------------------------------------------
 
-# ============================================================
-# AI 수다
-# ============================================================
-
-# 채널 이름에 "메인채팅"이 들어가면 자동 대화
+# 자동 대화를 사용할 채널
 CHAT_CHANNEL_KEYWORD = "메인채팅"
 
-MAX_HISTORY_MESSAGES = 12
+# 한 채널에서 기억할 최근 대화 수
+MAX_HISTORY_MESSAGES = 20
 
-MAX_AI_REPLY_LENGTH = 1900
+# 학습 데이터
+LEARNING_FILE = Path(__file__).parent / "learning_data.json"
 
+# 자동학습 설정
+AUTO_LEARNING_FILE = Path(__file__).parent / "auto_learning.json"
 
-# ============================================================
-# 파일
-# ============================================================
+# 질문이 얼마나 비슷해야 학습 내용을 사용할지
+MATCH_THRESHOLD = 0.55
 
-DATA_FILE = (
-    Path(__file__).parent / "members.json"
-)
+# ------------------------------------------------------------
+# JSON 파일
+# ------------------------------------------------------------
 
-CHAT_SETTINGS_FILE = (
-    Path(__file__).parent / "chat_settings.json"
-)
+DATA_FILE = Path(__file__).parent / "members.json"
+CHAT_SETTINGS_FILE = Path(__file__).parent / "chat_settings.json"
 
-
-# ============================================================
-# Discord 설정
-# ============================================================
+# ------------------------------------------------------------
+# Discord
+# ------------------------------------------------------------
 
 intents = discord.Intents.default()
-
 intents.members = True
-
 intents.message_content = True
-
 intents.voice_states = True
-
 
 bot = commands.Bot(
     command_prefix="!",
     intents=intents
 )
 
+# ------------------------------------------------------------
+# 로컬 데이터
+# ------------------------------------------------------------
 
-# ============================================================
-# Gemini
-# ============================================================
-
-ai_client = (
-    genai.Client(
-        api_key=GEMINI_API_KEY
-    )
-    if GEMINI_API_KEY
-    else None
-)
+members_data = {}
+chat_settings = {}
+learning_data = []
+auto_learning_settings = {}
 
 
-AI_SYSTEM_PROMPT = """
-너는 Discord 서버에서 사람들과 편하게 수다를 떠는 친근한 한국어 봇이야.
-
-말투:
-- 자연스러운 한국어
-- 너무 길게 말하지 말 것
-- 친구처럼 편하게 말하기
-- 상황에 따라 ㅋㅋ, ㅇㅇ, ㄹㅇ, 오, 헐 등을 자연스럽게 사용
-- 사용자가 진지하게 물으면 진지하게 답변
-- 장난에는 가볍게 받아주기
-- 억지로 질문을 계속하지 말 것
-- AI라는 사실을 숨기지 말 것
-
-안전:
-- 미성년자와 관련된 성적/노골적인 내용에는 응하지 말 것.
-- 미성년자의 성적 대상화, 성적 역할극 등을 하지 말 것.
-- 나이 인증 우회나 서버 인증 규칙 회피를 도와주지 말 것.
-- 불법 행위나 타인에게 피해를 주는 행동을 구체적으로 돕지 말 것.
-
-Discord 대화에서는 짧고 자연스럽게 답하는 것을 우선한다.
-"""
-
-
-chat_history = defaultdict(
-    lambda: deque(
-        maxlen=MAX_HISTORY_MESSAGES
-    )
-)
-
-
-# ============================================================
+# ------------------------------------------------------------
 # 시간
-# ============================================================
+# ------------------------------------------------------------
 
 def utcnow():
     return datetime.now(timezone.utc)
 
 
-# ============================================================
+# ------------------------------------------------------------
 # JSON
-# ============================================================
+# ------------------------------------------------------------
 
 def load_json_file(path, default):
 
@@ -171,7 +117,6 @@ def load_json_file(path, default):
         return default
 
     try:
-
         return json.loads(
             path.read_text(
                 encoding="utf-8"
@@ -214,15 +159,27 @@ members_data = load_json_file(
     {}
 )
 
-
 chat_settings = load_json_file(
     CHAT_SETTINGS_FILE,
     {}
 )
 
+learning_data = load_json_file(
+    LEARNING_FILE,
+    []
+)
+
+auto_learning_settings = load_json_file(
+    AUTO_LEARNING_FILE,
+    {}
+)
+
+# 데이터가 이상한 경우 대비
+if not isinstance(learning_data, list):
+    learning_data = []
+
 
 def save_data():
-
     save_json_file(
         DATA_FILE,
         members_data
@@ -230,16 +187,29 @@ def save_data():
 
 
 def save_chat_settings():
-
     save_json_file(
         CHAT_SETTINGS_FILE,
         chat_settings
     )
 
 
-# ============================================================
+def save_learning_data():
+    save_json_file(
+        LEARNING_FILE,
+        learning_data
+    )
+
+
+def save_auto_learning_settings():
+    save_json_file(
+        AUTO_LEARNING_FILE,
+        auto_learning_settings
+    )
+
+
+# ------------------------------------------------------------
 # 멤버 기록
-# ============================================================
+# ------------------------------------------------------------
 
 def ensure_member(member: discord.Member):
 
@@ -280,9 +250,9 @@ def ensure_member(member: discord.Member):
     return members_data[key]
 
 
-# ============================================================
+# ------------------------------------------------------------
 # 자동 추방 제외
-# ============================================================
+# ------------------------------------------------------------
 
 def is_exempt(member: discord.Member):
 
@@ -295,9 +265,9 @@ def is_exempt(member: discord.Member):
     return False
 
 
-# ============================================================
+# ------------------------------------------------------------
 # 채널 찾기
-# ============================================================
+# ------------------------------------------------------------
 
 def find_intro_channel(guild):
 
@@ -317,9 +287,9 @@ def find_log_channel(guild):
     )
 
 
-# ============================================================
-# 기존 역할 가져오기
-# ============================================================
+# ------------------------------------------------------------
+# 역할 가져오기
+# ------------------------------------------------------------
 
 async def ensure_roles(guild):
 
@@ -343,9 +313,9 @@ async def ensure_roles(guild):
     return roles
 
 
-# ============================================================
+# ------------------------------------------------------------
 # 자기소개 파싱
-# ============================================================
+# ------------------------------------------------------------
 
 def convert_birth_year(two_digit):
 
@@ -397,9 +367,9 @@ def parse_intro(text):
     }
 
 
-# ============================================================
+# ------------------------------------------------------------
 # 자기소개 역할 적용
-# ============================================================
+# ------------------------------------------------------------
 
 async def apply_intro_roles(
     member,
@@ -432,13 +402,7 @@ async def apply_intro_roles(
     )
 
     add_roles = []
-
     remove_roles = []
-
-
-    # --------------------------------------------------------
-    # 성별 역할
-    # --------------------------------------------------------
 
     if gender == "male":
 
@@ -455,11 +419,6 @@ async def apply_intro_roles(
 
         if male:
             remove_roles.append(male)
-
-
-    # --------------------------------------------------------
-    # 연령 역할
-    # --------------------------------------------------------
 
     if is_adult_from_birth_year(
         birth_year
@@ -479,14 +438,8 @@ async def apply_intro_roles(
         if adult:
             remove_roles.append(adult)
 
-
-    # --------------------------------------------------------
-    # 미인증 역할 제거
-    # --------------------------------------------------------
-
     if unverified:
         remove_roles.append(unverified)
-
 
     try:
 
@@ -524,15 +477,272 @@ async def apply_intro_roles(
 
 
 # ============================================================
-# 신규 멤버
+# 로컬 학습 시스템
 # ============================================================
+
+def normalize_text(text):
+
+    text = text.lower()
+
+    text = re.sub(
+        r"<@!?\d+>",
+        "",
+        text
+    )
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
+
+    text = text.strip()
+
+    return text
+
+
+def similarity(a, b):
+
+    a = normalize_text(a)
+    b = normalize_text(b)
+
+    if not a or not b:
+        return 0.0
+
+    if a == b:
+        return 1.0
+
+    if a in b or b in a:
+        return 0.85
+
+    return SequenceMatcher(
+        None,
+        a,
+        b
+    ).ratio()
+
+
+def learn_response(
+    question,
+    answer,
+    guild_id,
+    author_id,
+    automatic=False
+):
+
+    question = question.strip()
+    answer = answer.strip()
+
+    if not question or not answer:
+        return False
+
+    # 같은 질문이 있으면 기존 답변 업데이트
+    best_index = None
+    best_score = 0.0
+
+    for index, item in enumerate(
+        learning_data
+    ):
+
+        if item.get("guild_id") != guild_id:
+            continue
+
+        score = similarity(
+            question,
+            item.get("question", "")
+        )
+
+        if score > best_score:
+
+            best_score = score
+            best_index = index
+
+    if (
+        best_index is not None
+        and best_score >= 0.90
+    ):
+
+        learning_data[
+            best_index
+        ]["answer"] = answer
+
+        learning_data[
+            best_index
+        ]["updated_at"] = utcnow().isoformat()
+
+        learning_data[
+            best_index
+        ]["automatic"] = automatic
+
+        save_learning_data()
+
+        return True
+
+    learning_data.append({
+
+        "question": question,
+
+        "answer": answer,
+
+        "guild_id": guild_id,
+
+        "author_id": author_id,
+
+        "automatic": automatic,
+
+        "created_at":
+            utcnow().isoformat(),
+
+        "updated_at":
+            utcnow().isoformat()
+    })
+
+    save_learning_data()
+
+    return True
+
+
+def find_learned_answer(
+    question,
+    guild_id
+):
+
+    best_item = None
+    best_score = 0.0
+
+    for item in learning_data:
+
+        if item.get("guild_id") != guild_id:
+            continue
+
+        score = similarity(
+            question,
+            item.get("question", "")
+        )
+
+        if score > best_score:
+
+            best_score = score
+            best_item = item
+
+    if (
+        best_item
+        and best_score >= MATCH_THRESHOLD
+    ):
+
+        return (
+            best_item.get(
+                "answer",
+                ""
+            ),
+            best_score
+        )
+
+    return None, best_score
+
+
+def auto_learning_enabled(guild_id):
+
+    return bool(
+        auto_learning_settings.get(
+            str(guild_id),
+            False
+        )
+    )
+
+
+def chat_enabled(guild_id):
+
+    return bool(
+        chat_settings.get(
+            str(guild_id),
+            False
+        )
+    )
+
+
+# ------------------------------------------------------------
+# 최근 대화
+# ------------------------------------------------------------
+
+chat_history = defaultdict(
+    lambda: deque(
+        maxlen=MAX_HISTORY_MESSAGES
+    )
+)
+
+
+def add_chat_history(
+    message,
+    answer=None
+):
+
+    key = (
+        message.guild.id,
+        message.channel.id
+    )
+
+    chat_history[key].append({
+
+        "user":
+            message.author.display_name,
+
+        "content":
+            message.content.strip(),
+
+        "answer":
+            answer
+    })
+
+
+# ------------------------------------------------------------
+# 자동학습 대상 판별
+# ------------------------------------------------------------
+
+def looks_like_question(text):
+
+    text = text.strip()
+
+    if not text:
+        return False
+
+    if len(text) < 3:
+        return False
+
+    question_words = [
+        "?",
+        "뭐야",
+        "뭐임",
+        "뭔데",
+        "어떻게",
+        "어디",
+        "언제",
+        "누구",
+        "왜",
+        "몇",
+        "알려줘",
+        "알려 줘",
+        "뜻",
+        "의미"
+    ]
+
+    for word in question_words:
+
+        if word in text:
+            return True
+
+    return False
+
+
+# ------------------------------------------------------------
+# 신규 멤버
+# ------------------------------------------------------------
 
 @bot.event
 async def on_member_join(member):
 
     if member.bot:
         return
-
 
     members_data[str(member.id)] = {
 
@@ -554,12 +764,10 @@ async def on_member_join(member):
 
     save_data()
 
-
     print(
         f"[입장] "
         f"{member} ({member.id})"
     )
-
 
     try:
 
@@ -585,11 +793,9 @@ async def on_member_join(member):
             "Manage Roles 권한 확인"
         )
 
-
     intro_channel = find_intro_channel(
         member.guild
     )
-
 
     if intro_channel:
 
@@ -602,9 +808,11 @@ async def on_member_join(member):
 
                 f"**3일 이내에 자기소개를 작성해주세요.**\n"
 
-                f"예시: `04남`, `04 여`, `04ㄴ`, `04 ㅇ`\n\n"
+                f"예시: `04남`, `04 여`, "
+                f"`04ㄴ`, `04 ㅇ`\n\n"
 
-                f"채팅이나 음성채널 활동도 자유롭게 해주세요.\n\n"
+                f"채팅이나 음성채널 활동도 "
+                f"자유롭게 해주세요.\n\n"
 
                 f"⚠️ 자기소개도 없고 "
                 f"3일간 활동도 없으면 "
@@ -619,67 +827,43 @@ async def on_member_join(member):
 
 
 # ============================================================
-# AI 수다 설정
+# 로컬 수다
 # ============================================================
 
-def chat_enabled(guild_id):
-
-    return bool(
-        chat_settings.get(
-            str(guild_id),
-            False
-        )
-    )
-
-
-def should_ai_chat(message):
+def should_local_chat(message):
 
     if not isinstance(
         message.channel,
         discord.TextChannel
     ):
-
         return False
 
-
     content = message.content.strip()
-
 
     if not content:
         return False
 
-
     if content.startswith("!"):
         return False
-
 
     # 봇 멘션
     if (
         bot.user
         and bot.user in message.mentions
     ):
-
         return True
 
-
+    # 봇아
     lowered = content.lower()
 
-
-    # 봇아
     if lowered.startswith("봇아"):
         return True
 
-
-    # 봇,
-    # 봇!
-    # 봇?
     if re.match(
         r"^봇[\s,!?]",
         content
     ):
-
         return True
-
 
     # 메인채팅 자동대화
     if chat_enabled(
@@ -687,9 +871,7 @@ def should_ai_chat(message):
     ):
 
         if CHAT_CHANNEL_KEYWORD in message.channel.name:
-
             return True
-
 
     return False
 
@@ -711,224 +893,95 @@ def clean_bot_mention(text):
     return text.strip()
 
 
-# ============================================================
-# Gemini AI 답변
-# ============================================================
-
-async def generate_ai_reply(message):
-
-    if ai_client is None:
-
-        print(
-            "[Gemini 오류] "
-            "GEMINI_API_KEY가 없습니다."
-        )
-
-        return (
-            "AI 수다 기능이 아직 설정 안 됐어 ㅋㅋ\n"
-            "Railway Variables의 "
-            "`GEMINI_API_KEY`를 확인해줘!"
-        )
-
+async def generate_local_reply(message):
 
     user_text = clean_bot_mention(
         message.content
     )
 
-
     if not user_text:
-        user_text = "안녕!"
+        user_text = "안녕"
 
+    # --------------------------------------------------------
+    # 저장된 학습 데이터 검색
+    # --------------------------------------------------------
 
-    channel_key = (
-        message.guild.id,
-        message.channel.id
+    answer, score = find_learned_answer(
+        user_text,
+        message.guild.id
     )
 
-
-    history = list(
-        chat_history[channel_key]
-    )
-
-
-    conversation = []
-
-
-    # --------------------------------------------------------
-    # 기존 대화
-    # --------------------------------------------------------
-
-    for item in history:
-
-        role = item.get(
-            "role"
-        )
-
-        if role == "assistant":
-
-            role = "model"
-
-        elif role == "user":
-
-            role = "user"
-
-        else:
-
-            continue
-
-
-        conversation.append(
-            {
-                "role": role,
-
-                "parts": [
-                    {
-                        "text":
-                            item.get(
-                                "content",
-                                ""
-                            )
-                    }
-                ]
-            }
-        )
-
-
-    # --------------------------------------------------------
-    # 현재 사용자 메시지
-    # --------------------------------------------------------
-
-    conversation.append(
-        {
-            "role": "user",
-
-            "parts": [
-                {
-                    "text":
-                        f"{message.author.display_name}: "
-                        f"{user_text}"
-                }
-            ]
-        }
-    )
-
-
-    try:
+    if answer:
 
         print(
-            f"[Gemini 요청] "
-            f"모델={GEMINI_MODEL} "
-            f"사용자={message.author} "
-            f"내용={user_text[:100]}"
+            f"[학습 답변] "
+            f"유사도={score:.2f}"
         )
-
-
-        response = (
-            await ai_client.aio.models.generate_content(
-
-                model=GEMINI_MODEL,
-
-                contents=conversation,
-
-                config={
-                    "system_instruction":
-                        AI_SYSTEM_PROMPT,
-
-                    "max_output_tokens":
-                        500
-                }
-            )
-        )
-
-
-        answer = (
-            response.text or ""
-        ).strip()
-
-
-        if not answer:
-
-            print(
-                "[Gemini 오류] "
-                "응답 내용이 비어 있습니다."
-            )
-
-            return (
-                "어... 갑자기 할 말이 "
-                "생각 안 났다 ㅋㅋ"
-            )
-
-
-        # ----------------------------------------------------
-        # 대화 기록
-        # ----------------------------------------------------
-
-        chat_history[channel_key].append(
-            {
-                "role": "user",
-
-                "content":
-                    f"{message.author.display_name}: "
-                    f"{user_text}"
-            }
-        )
-
-
-        chat_history[channel_key].append(
-            {
-                "role": "assistant",
-
-                "content": answer
-            }
-        )
-
-
-        # ----------------------------------------------------
-        # Discord 메시지 길이 제한
-        # ----------------------------------------------------
-
-        if len(answer) > MAX_AI_REPLY_LENGTH:
-
-            answer = (
-                answer[
-                    :MAX_AI_REPLY_LENGTH - 3
-                ]
-                + "..."
-            )
-
-
-        print(
-            "[Gemini 성공] 답변 생성 완료"
-        )
-
 
         return answer
 
+    # --------------------------------------------------------
+    # 기본 반응
+    # --------------------------------------------------------
 
-    except Exception as e:
+    normalized = normalize_text(
+        user_text
+    )
 
-        print("=" * 60)
+    if normalized in [
+        "안녕",
+        "하이",
+        "ㅎㅇ",
+        "ㅎㅇㅇ"
+    ]:
 
-        print(
-            "[Gemini 오류 발생]"
-        )
+        return "오 ㅋㅋ 안녕!"
 
-        print(
-            f"오류 종류: "
-            f"{type(e).__name__}"
-        )
+    if "뭐해" in normalized:
 
-        print(
-            f"오류 내용: {e}"
-        )
+        return "나? 여기서 대기 중이지 ㅋㅋ"
 
-        print("=" * 60)
+    if "잘자" in normalized:
 
+        return "웅 잘자 ㅋㅋ 좋은 꿈 꿔!"
+
+    if "고마워" in normalized:
+
+        return "ㅋㅋ 별거 아니지"
+
+    if "ㅋㅋ" in normalized:
+
+        return "ㅋㅋㅋㅋ"
+
+    if "안녕하세요" in normalized:
+
+        return "안녕하세요 ㅋㅋ"
+
+    if "봇" in normalized and (
+        "이름" in normalized
+        or "누구" in normalized
+    ):
 
         return (
-            "AI 연결 중 오류가 발생했어 ㅠㅠ\n"
-            "잠시 후 다시 말해줘!"
+            "내 이름은 아직 정해진 게 없는데 "
+            "서버에서는 그냥 봇이라고 불러줘 ㅋㅋ"
         )
+
+    if looks_like_question(
+        user_text
+    ):
+
+        return (
+            "음... 그건 아직 내가 "
+            "학습하지 않은 내용이야 ㅋㅋ\n"
+            "관리자가 `!학습시키기 질문 | 답변` "
+            "형식으로 가르쳐주면 기억할 수 있어!"
+        )
+
+    return (
+        "오 ㅋㅋ "
+        "그건 아직 내가 배운 내용이 없어!"
+    )
 
 
 # ============================================================
@@ -941,7 +994,6 @@ async def on_message(message):
     if message.author.bot:
         return
 
-
     if isinstance(
         message.author,
         discord.Member
@@ -949,20 +1001,17 @@ async def on_message(message):
 
         member = message.author
 
-
         data = ensure_member(
             member
         )
-
 
         data["last_activity"] = (
             utcnow().isoformat()
         )
 
-
-        # ====================================================
+        # ----------------------------------------------------
         # 자기소개
-        # ====================================================
+        # ----------------------------------------------------
 
         if isinstance(
             message.channel,
@@ -975,11 +1024,9 @@ async def on_message(message):
                     message.content.strip()
                 )
 
-
                 parsed = parse_intro(
                     intro_text
                 )
-
 
                 if parsed:
 
@@ -993,9 +1040,7 @@ async def on_message(message):
                         parsed["gender"]
                     )
 
-
                     save_data()
-
 
                     role_success = (
                         await apply_intro_roles(
@@ -1005,28 +1050,19 @@ async def on_message(message):
                         )
                     )
 
-
                     gender_text = (
-
                         "남자"
-
                         if parsed["gender"] == "male"
-
                         else "여자"
                     )
 
-
                     age_text = (
-
                         "성인"
-
                         if is_adult_from_birth_year(
                             parsed["birth_year"]
                         )
-
                         else "미자"
                     )
-
 
                     print(
                         f"[자기소개 완료] "
@@ -1035,7 +1071,6 @@ async def on_message(message):
                         f"{gender_text} / "
                         f"{age_text}"
                     )
-
 
                     try:
 
@@ -1047,13 +1082,11 @@ async def on_message(message):
 
                         pass
 
-
                     if role_success:
 
                         roles = await ensure_roles(
                             member.guild
                         )
-
 
                         gender_role = (
 
@@ -1063,7 +1096,6 @@ async def on_message(message):
 
                             else roles.get("female")
                         )
-
 
                         age_role = (
 
@@ -1076,9 +1108,7 @@ async def on_message(message):
                             else roles.get("minor")
                         )
 
-
                         role_mentions = []
-
 
                         if gender_role:
 
@@ -1086,13 +1116,11 @@ async def on_message(message):
                                 gender_role.mention
                             )
 
-
                         if age_role:
 
                             role_mentions.append(
                                 age_role.mention
                             )
-
 
                         role_text = (
 
@@ -1104,7 +1132,6 @@ async def on_message(message):
 
                             else "역할을 찾을 수 없음"
                         )
-
 
                         try:
 
@@ -1121,29 +1148,51 @@ async def on_message(message):
 
                             pass
 
-
                 save_data()
-
 
             else:
 
                 save_data()
 
+        # ----------------------------------------------------
+        # 자동학습
+        # ----------------------------------------------------
 
-        # ====================================================
-        # AI 수다
-        # ====================================================
+        if (
+            isinstance(
+                message.channel,
+                discord.TextChannel
+            )
+            and auto_learning_enabled(
+                message.guild.id
+            )
+            and CHAT_CHANNEL_KEYWORD
+            in message.channel.name
+        ):
 
-        if should_ai_chat(message):
+            # 자동학습은 질문처럼 보이는 내용만 기록
+            # 답변이 없는 상태에서는 바로 학습시키지 않음
+            # !학습시키기로 정확한 답변을 넣는 것을 권장
+            pass
+
+        # ----------------------------------------------------
+        # 로컬 수다
+        # ----------------------------------------------------
+
+        if should_local_chat(message):
 
             async with message.channel.typing():
 
                 answer = (
-                    await generate_ai_reply(
+                    await generate_local_reply(
                         message
                     )
                 )
 
+            add_chat_history(
+                message,
+                answer
+            )
 
             try:
 
@@ -1155,9 +1204,8 @@ async def on_message(message):
             except discord.HTTPException as e:
 
                 print(
-                    f"[AI 답변 전송 오류] {e}"
+                    f"[답변 전송 오류] {e}"
                 )
-
 
     await bot.process_commands(
         message
@@ -1165,229 +1213,525 @@ async def on_message(message):
 
 
 # ============================================================
-# 음성 활동
+# 학습 명령어
 # ============================================================
 
-@bot.event
-async def on_voice_state_update(
-    member,
-    before,
-    after
+@bot.command(
+    name="학습시키기"
+)
+@commands.has_permissions(
+    administrator=True
+)
+async def teach(
+    ctx,
+    *,
+    content: str = None
 ):
 
-    if member.bot:
+    if not content:
+
+        await ctx.send(
+            "❌ 사용법:\n"
+            "`!학습시키기 질문 | 답변`\n\n"
+            "예시:\n"
+            "`!학습시키기 봇 이름이 뭐야? | 새벽봇이야!`"
+        )
+
         return
 
+    if "|" not in content:
 
-    if (
-        before.channel is None
-        and after.channel is not None
-    ):
-
-        data = ensure_member(
-            member
+        await ctx.send(
+            "❌ 질문과 답변 사이에 `|`를 넣어줘.\n\n"
+            "예시:\n"
+            "`!학습시키기 서버 주인이 누구야? | 관리자님이야.`"
         )
 
+        return
 
-        data["last_activity"] = (
-            utcnow().isoformat()
+    question, answer = content.split(
+        "|",
+        1
+    )
+
+    question = question.strip()
+    answer = answer.strip()
+
+    if not question or not answer:
+
+        await ctx.send(
+            "❌ 질문과 답변을 모두 입력해줘."
         )
 
+        return
 
-        save_data()
+    if len(question) > 500:
 
+        await ctx.send(
+            "❌ 질문이 너무 길어."
+        )
 
-# ============================================================
-# 자동 추방
-# ============================================================
+        return
 
-@tasks.loop(
-    minutes=CHECK_MINUTES
-)
-async def check_members():
+    if len(answer) > 1500:
 
-    current = utcnow()
+        await ctx.send(
+            "❌ 답변이 너무 길어."
+        )
 
+        return
 
-    print(
-        f"[자동 검사] "
-        f"{current.strftime('%Y-%m-%d %H:%M:%S')}"
+    learn_response(
+        question,
+        answer,
+        ctx.guild.id,
+        ctx.author.id,
+        automatic=False
+    )
+
+    await ctx.send(
+        "🧠 **학습 완료!**\n"
+        f"질문: `{question}`\n"
+        f"답변: `{answer}`"
     )
 
 
-    for guild in bot.guilds:
+# ------------------------------------------------------------
+# !학습목록
+# ------------------------------------------------------------
 
-        for member in guild.members:
+@bot.command(
+    name="학습목록"
+)
+@commands.has_permissions(
+    administrator=True
+)
+async def learning_list(ctx):
 
-            if is_exempt(member):
-                continue
+    guild_items = [
+
+        item
+
+        for item in learning_data
+
+        if item.get("guild_id")
+        == ctx.guild.id
+    ]
+
+    if not guild_items:
+
+        await ctx.send(
+            "🧠 아직 배운 내용이 없어."
+        )
+
+        return
+
+    # Discord 메시지 길이 제한 때문에
+    # 최대 20개만 보여줌
+
+    guild_items = guild_items[-20:]
+
+    lines = []
+
+    for index, item in enumerate(
+        guild_items,
+        start=1
+    ):
+
+        question = item.get(
+            "question",
+            ""
+        )
+
+        answer = item.get(
+            "answer",
+            ""
+        )
+
+        lines.append(
+            f"**{index}.** "
+            f"Q: {question}\n"
+            f"A: {answer}"
+        )
+
+    text = (
+        "🧠 **최근 학습 목록**\n\n"
+        + "\n\n".join(lines)
+    )
+
+    if len(text) > 1900:
+
+        text = text[:1890] + "..."
+
+    await ctx.send(
+        text
+    )
 
 
-            data = members_data.get(
-                str(member.id)
+# ------------------------------------------------------------
+# !학습검색
+# ------------------------------------------------------------
+
+@bot.command(
+    name="학습검색"
+)
+@commands.has_permissions(
+    administrator=True
+)
+async def learning_search(
+    ctx,
+    *,
+    question: str = None
+):
+
+    if not question:
+
+        await ctx.send(
+            "❌ 사용법:\n"
+            "`!학습검색 질문`"
+        )
+
+        return
+
+    answer, score = find_learned_answer(
+        question,
+        ctx.guild.id
+    )
+
+    if not answer:
+
+        await ctx.send(
+            "🔎 비슷한 학습 내용을 찾지 못했어."
+        )
+
+        return
+
+    await ctx.send(
+        f"🔎 **검색 결과**\n\n"
+        f"유사도: `{score:.2f}`\n"
+        f"답변: {answer}"
+    )
+
+
+# ------------------------------------------------------------
+# !학습삭제
+# ------------------------------------------------------------
+
+@bot.command(
+    name="학습삭제"
+)
+@commands.has_permissions(
+    administrator=True
+)
+async def learning_delete(
+    ctx,
+    number: int = None
+):
+
+    if number is None:
+
+        await ctx.send(
+            "❌ 사용법:\n"
+            "`!학습삭제 번호`"
+        )
+
+        return
+
+    guild_items = [
+
+        (
+            real_index,
+            item
+        )
+
+        for real_index, item
+        in enumerate(learning_data)
+
+        if item.get("guild_id")
+        == ctx.guild.id
+    ]
+
+    if number < 1 or number > len(
+        guild_items
+    ):
+
+        await ctx.send(
+            "❌ 존재하지 않는 학습 번호야."
+        )
+
+        return
+
+    real_index, item = guild_items[
+        number - 1
+    ]
+
+    removed = learning_data.pop(
+        real_index
+    )
+
+    save_learning_data()
+
+    await ctx.send(
+        "🗑️ **학습 삭제 완료**\n"
+        f"질문: `{removed.get('question', '')}`"
+    )
+
+
+# ------------------------------------------------------------
+# !학습초기화
+# ------------------------------------------------------------
+
+@bot.command(
+    name="학습초기화"
+)
+@commands.has_permissions(
+    administrator=True
+)
+async def learning_reset(ctx):
+
+    global learning_data
+
+    before = len(
+        learning_data
+    )
+
+    learning_data = [
+
+        item
+
+        for item in learning_data
+
+        if item.get("guild_id")
+        != ctx.guild.id
+    ]
+
+    save_learning_data()
+
+    removed = (
+        before
+        - len(learning_data)
+    )
+
+    await ctx.send(
+        f"🧹 이 서버의 학습 내용을 "
+        f"**{removed}개** 삭제했어."
+    )
+
+
+# ------------------------------------------------------------
+# !자동학습
+# ------------------------------------------------------------
+
+@bot.command(
+    name="자동학습"
+)
+@commands.has_permissions(
+    administrator=True
+)
+async def auto_learning(
+    ctx,
+    setting: str = None
+):
+
+    if setting is None:
+
+        state = (
+
+            "켜짐"
+
+            if auto_learning_enabled(
+                ctx.guild.id
             )
 
+            else "꺼짐"
+        )
 
-            if not data:
-                continue
+        await ctx.send(
+            f"🧠 자동학습: **{state}**\n\n"
+            "`!자동학습 켜기`\n"
+            "`!자동학습 끄기`"
+        )
 
+        return
 
-            try:
+    setting = setting.lower()
 
-                joined = datetime.fromisoformat(
-                    data["joined"]
-                )
+    if setting == "켜기":
 
+        auto_learning_settings[
+            str(ctx.guild.id)
+        ] = True
 
-                last_activity = (
-                    datetime.fromisoformat(
-                        data["last_activity"]
-                    )
-                )
+        save_auto_learning_settings()
 
+        await ctx.send(
+            "🧠 자동학습을 **켜짐**으로 설정했어.\n"
+            "단, 이 버전에서는 대화 내용을 "
+            "무작정 학습하지 않고 "
+            "명시적인 `!학습시키기`를 사용하는 걸 권장해."
+        )
 
-            except (
-                KeyError,
-                ValueError,
-                TypeError
-            ):
+    elif setting == "끄기":
 
-                continue
+        auto_learning_settings[
+            str(ctx.guild.id)
+        ] = False
 
+        save_auto_learning_settings()
 
-            if (
-                current - joined
-                < timedelta(days=GRACE_DAYS)
-            ):
+        await ctx.send(
+            "🧠 자동학습을 **꺼짐**으로 설정했어."
+        )
 
-                continue
+    else:
 
-
-            if data.get(
-                "intro",
-                False
-            ):
-
-                continue
-
-
-            if (
-                current - last_activity
-                < timedelta(days=GRACE_DAYS)
-            ):
-
-                continue
-
-
-            try:
-
-                log_channel = (
-                    find_log_channel(guild)
-                )
-
-
-                if log_channel:
-
-                    embed = discord.Embed(
-
-                        title="🚪 자동 추방",
-
-                        description=(
-
-                            f"{member.mention} 님이 "
-
-                            f"**자기소개 미작성 + "
-                            f"장기 미활동**으로 "
-
-                            f"자동 추방되었습니다."
-                        ),
-
-                        timestamp=current
-                    )
-
-
-                    embed.add_field(
-
-                        name="사용자",
-
-                        value=(
-                            f"{member} "
-                            f"({member.id})"
-                        ),
-
-                        inline=False
-                    )
-
-
-                    embed.add_field(
-
-                        name="사유",
-
-                        value=(
-
-                            "가입 후 3일 경과 / "
-                            "자기소개 없음 / "
-                            "3일간 활동 없음"
-                        ),
-
-                        inline=False
-                    )
-
-
-                    await log_channel.send(
-                        embed=embed
-                    )
-
-
-                await member.kick(
-
-                    reason=(
-                        "자기소개 미작성 + "
-                        "3일간 활동 없음"
-                    )
-                )
-
-
-                members_data.pop(
-                    str(member.id),
-                    None
-                )
-
-
-                save_data()
-
-
-            except discord.Forbidden:
-
-                print(
-                    f"[추방 권한 오류] "
-                    f"{member}"
-                )
-
-
-            except Exception as e:
-
-                print(
-                    f"[추방 오류] "
-                    f"{member}: {e}"
-                )
+        await ctx.send(
+            "❌ 사용법:\n"
+            "`!자동학습 켜기`\n"
+            "`!자동학습 끄기`"
+        )
 
 
 # ============================================================
-# 검사 시작
+# !대화 켜기 / 끄기
 # ============================================================
 
-@check_members.before_loop
-async def before_check_members():
+@bot.command(
+    name="대화"
+)
+@commands.has_permissions(
+    administrator=True
+)
+async def chat_toggle(
+    ctx,
+    setting: str = None
+):
 
-    await bot.wait_until_ready()
+    if setting is None:
+
+        state = (
+
+            "켜짐"
+
+            if chat_enabled(
+                ctx.guild.id
+            )
+
+            else "꺼짐"
+        )
+
+        await ctx.send(
+            f"💬 메인채팅 자동 대화: "
+            f"**{state}**\n\n"
+            "`!대화 켜기`\n"
+            "`!대화 끄기`"
+        )
+
+        return
+
+    setting = setting.lower()
+
+    if setting == "켜기":
+
+        chat_settings[
+            str(ctx.guild.id)
+        ] = True
+
+        save_chat_settings()
+
+        await ctx.send(
+            "💬 **메인채팅 자동 대화 ON!**\n"
+            "이제 `＃↝・메인채팅`에서 "
+            "사람들이 말하면 배운 내용을 찾아서 "
+            "대답할게 ㅋㅋ"
+        )
+
+    elif setting == "끄기":
+
+        chat_settings[
+            str(ctx.guild.id)
+        ] = False
+
+        save_chat_settings()
+
+        await ctx.send(
+            "💬 **메인채팅 자동 대화 OFF!**\n"
+            "`봇아`라고 부르거나 "
+            "멘션하면 그래도 답변해."
+        )
+
+    else:
+
+        await ctx.send(
+            "❌ 사용법:\n"
+            "`!대화 켜기`\n"
+            "`!대화 끄기`"
+        )
+
+
+# ============================================================
+# !대화초기화
+# ============================================================
+
+@bot.command(
+    name="대화초기화"
+)
+@commands.has_permissions(
+    administrator=True
+)
+async def reset_chat(ctx):
+
+    channel_key = (
+        ctx.guild.id,
+        ctx.channel.id
+    )
+
+    chat_history.pop(
+        channel_key,
+        None
+    )
+
+    await ctx.send(
+        "🧹 이 채널의 대화 기억을 초기화했어."
+    )
+
+
+# ============================================================
+# !대화도움
+# ============================================================
+
+@bot.command(
+    name="대화도움"
+)
+async def chat_help(ctx):
+
+    await ctx.send(
+
+        "💬 **로컬 학습형 봇 사용법**\n\n"
+
+        "• `봇아 안녕` → 봇 호출\n"
+        "• 봇 멘션 → 봇 호출\n"
+        "• 관리자 `!대화 켜기` → 메인채팅 자동 대화\n"
+        "• 관리자 `!대화 끄기` → 자동 대화 OFF\n\n"
+
+        "🧠 **학습**\n"
+        "• `!학습시키기 질문 | 답변`\n"
+        "• `!학습목록`\n"
+        "• `!학습검색 질문`\n"
+        "• `!학습삭제 번호`\n"
+        "• `!학습초기화`\n"
+        "• `!자동학습 켜기`\n"
+        "• `!자동학습 끄기`"
+    )
 
 
 # ============================================================
 # !상태
 # ============================================================
 
-@bot.command(name="상태")
+@bot.command(
+    name="상태"
+)
 @commands.has_permissions(
     administrator=True
 )
@@ -1398,11 +1742,9 @@ async def status(
 
     member = member or ctx.author
 
-
     data = members_data.get(
         str(member.id)
     )
-
 
     if not data:
 
@@ -1412,16 +1754,17 @@ async def status(
 
         return
 
-
     intro = (
 
         "✅ 작성 완료"
 
-        if data.get("intro", False)
+        if data.get(
+            "intro",
+            False
+        )
 
         else "❌ 미작성"
     )
-
 
     try:
 
@@ -1429,26 +1772,21 @@ async def status(
             data["last_activity"]
         )
 
-
         last_text = (
             f"<t:{int(last.timestamp())}:R>"
         )
-
 
     except Exception:
 
         last_text = "알 수 없음"
 
-
     birth_year = data.get(
         "birth_year"
     )
 
-
     gender = data.get(
         "gender"
     )
-
 
     gender_text = {
 
@@ -1465,9 +1803,7 @@ async def status(
         "미설정"
     )
 
-
     age_text = "미설정"
-
 
     if birth_year:
 
@@ -1482,20 +1818,14 @@ async def status(
             else "미자"
         )
 
-
     await ctx.send(
 
         f"**{member.display_name} 상태**\n"
-
         f"자기소개: {intro}\n"
-
         f"출생연도: "
         f"{birth_year or '미설정'}\n"
-
         f"성별: {gender_text}\n"
-
         f"연령 역할: {age_text}\n"
-
         f"최근 활동: {last_text}"
     )
 
@@ -1504,7 +1834,9 @@ async def status(
 # !검사
 # ============================================================
 
-@bot.command(name="검사")
+@bot.command(
+    name="검사"
+)
 @commands.has_permissions(
     administrator=True
 )
@@ -1514,7 +1846,6 @@ async def manual_check(ctx):
 
     current = utcnow()
 
-
     for guild in bot.guilds:
 
         for member in guild.members:
@@ -1522,15 +1853,12 @@ async def manual_check(ctx):
             if is_exempt(member):
                 continue
 
-
             data = members_data.get(
                 str(member.id)
             )
 
-
             if not data:
                 continue
-
 
             try:
 
@@ -1538,18 +1866,15 @@ async def manual_check(ctx):
                     data["joined"]
                 )
 
-
                 last_activity = (
                     datetime.fromisoformat(
                         data["last_activity"]
                     )
                 )
 
-
             except Exception:
 
                 continue
-
 
             if (
                 current - joined
@@ -1558,14 +1883,12 @@ async def manual_check(ctx):
 
                 continue
 
-
             if data.get(
                 "intro",
                 False
             ):
 
                 continue
-
 
             if (
                 current - last_activity
@@ -1574,12 +1897,9 @@ async def manual_check(ctx):
 
                 continue
 
-
             count += 1
 
-
     await ctx.send(
-
         f"🔍 현재 자동 추방 조건에 "
         f"해당하는 멤버: **{count}명**"
     )
@@ -1604,16 +1924,11 @@ async def reset_intro(
         member
     )
 
-
     data["intro"] = False
-
     data["birth_year"] = None
-
     data["gender"] = None
 
-
     save_data()
-
 
     try:
 
@@ -1621,26 +1936,18 @@ async def reset_intro(
             member.guild
         )
 
-
         remove_roles = []
 
-
         for role_type in [
-
             "male",
-
             "female",
-
             "adult",
-
             "minor"
-
         ]:
 
             role = roles.get(
                 role_type
             )
-
 
             if (
                 role
@@ -1651,21 +1958,16 @@ async def reset_intro(
                     role
                 )
 
-
         unverified = roles.get(
             "unverified"
         )
 
-
         if remove_roles:
 
             await member.remove_roles(
-
                 *remove_roles,
-
                 reason="자기소개 인증 초기화"
             )
-
 
         if (
             unverified
@@ -1673,17 +1975,13 @@ async def reset_intro(
         ):
 
             await member.add_roles(
-
                 unverified,
-
                 reason="자기소개 인증 초기화"
             )
-
 
     except discord.Forbidden:
 
         await ctx.send(
-
             "⚠️ 상태는 초기화했지만 "
             "역할 변경 권한이 없어 "
             "역할은 바꾸지 못했어."
@@ -1691,162 +1989,203 @@ async def reset_intro(
 
         return
 
-
     await ctx.send(
-
         f"🔄 {member.mention}님의 "
-
         f"자기소개 상태와 인증 역할을 "
-
         f"초기화했습니다."
     )
 
 
 # ============================================================
-# !대화 켜기 / 끄기
+# 음성 활동
 # ============================================================
 
-@bot.command(name="대화")
-@commands.has_permissions(
-    administrator=True
-)
-async def chat_toggle(
-    ctx,
-    setting: str = None
+@bot.event
+async def on_voice_state_update(
+    member,
+    before,
+    after
 ):
 
-    if setting is None:
-
-        state = (
-
-            "켜짐"
-
-            if chat_enabled(
-                ctx.guild.id
-            )
-
-            else "꺼짐"
-        )
-
-
-        await ctx.send(
-
-            f"💬 메인채팅 자동 대화: "
-            f"**{state}**\n\n"
-
-            f"`!대화 켜기`\n"
-
-            f"`!대화 끄기`"
-        )
-
+    if member.bot:
         return
 
+    if (
+        before.channel is None
+        and after.channel is not None
+    ):
 
-    setting = setting.lower()
-
-
-    if setting == "켜기":
-
-        chat_settings[
-            str(ctx.guild.id)
-        ] = True
-
-
-        save_chat_settings()
-
-
-        await ctx.send(
-
-            "💬 **메인채팅 AI 자동 대화 ON!**\n"
-
-            "이제 `＃↝・메인채팅`에서 "
-            "사람들이 말하면 나도 대화할게 ㅋㅋ"
+        data = ensure_member(
+            member
         )
 
-
-    elif setting == "끄기":
-
-        chat_settings[
-            str(ctx.guild.id)
-        ] = False
-
-
-        save_chat_settings()
-
-
-        await ctx.send(
-
-            "💬 **메인채팅 AI 자동 대화 OFF!**\n"
-
-            "`봇아`라고 부르거나 "
-            "멘션하면 그래도 답변해."
+        data["last_activity"] = (
+            utcnow().isoformat()
         )
 
-
-    else:
-
-        await ctx.send(
-
-            "❌ 사용법:\n"
-
-            "`!대화 켜기`\n"
-
-            "`!대화 끄기`"
-        )
+        save_data()
 
 
 # ============================================================
-# !대화초기화
+# 자동 추방
 # ============================================================
 
-@bot.command(
-    name="대화초기화"
+@tasks.loop(
+    minutes=CHECK_MINUTES
 )
-@commands.has_permissions(
-    administrator=True
-)
-async def reset_chat(ctx):
+async def check_members():
 
-    channel_key = (
-        ctx.guild.id,
-        ctx.channel.id
+    current = utcnow()
+
+    print(
+        f"[자동 검사] "
+        f"{current.strftime('%Y-%m-%d %H:%M:%S')}"
     )
 
+    for guild in bot.guilds:
 
-    chat_history.pop(
-        channel_key,
-        None
-    )
+        for member in guild.members:
 
+            if is_exempt(member):
+                continue
 
-    await ctx.send(
-        "🧹 이 채널의 AI 대화 기억을 초기화했어."
-    )
+            data = members_data.get(
+                str(member.id)
+            )
+
+            if not data:
+                continue
+
+            try:
+
+                joined = datetime.fromisoformat(
+                    data["joined"]
+                )
+
+                last_activity = (
+                    datetime.fromisoformat(
+                        data["last_activity"]
+                    )
+                )
+
+            except (
+                KeyError,
+                ValueError,
+                TypeError
+            ):
+
+                continue
+
+            if (
+                current - joined
+                < timedelta(days=GRACE_DAYS)
+            ):
+
+                continue
+
+            if data.get(
+                "intro",
+                False
+            ):
+
+                continue
+
+            if (
+                current - last_activity
+                < timedelta(days=GRACE_DAYS)
+            ):
+
+                continue
+
+            try:
+
+                log_channel = (
+                    find_log_channel(guild)
+                )
+
+                if log_channel:
+
+                    embed = discord.Embed(
+
+                        title="🚪 자동 추방",
+
+                        description=(
+                            f"{member.mention} 님이 "
+                            f"**자기소개 미작성 + "
+                            f"장기 미활동**으로 "
+                            f"자동 추방되었습니다."
+                        ),
+
+                        timestamp=current
+                    )
+
+                    embed.add_field(
+
+                        name="사용자",
+
+                        value=(
+                            f"{member} "
+                            f"({member.id})"
+                        ),
+
+                        inline=False
+                    )
+
+                    embed.add_field(
+
+                        name="사유",
+
+                        value=(
+                            "가입 후 3일 경과 / "
+                            "자기소개 없음 / "
+                            "3일간 활동 없음"
+                        ),
+
+                        inline=False
+                    )
+
+                    await log_channel.send(
+                        embed=embed
+                    )
+
+                await member.kick(
+
+                    reason=(
+                        "자기소개 미작성 + "
+                        "3일간 활동 없음"
+                    )
+                )
+
+                members_data.pop(
+                    str(member.id),
+                    None
+                )
+
+                save_data()
+
+            except discord.Forbidden:
+
+                print(
+                    f"[추방 권한 오류] "
+                    f"{member}"
+                )
+
+            except Exception as e:
+
+                print(
+                    f"[추방 오류] "
+                    f"{member}: {e}"
+                )
 
 
 # ============================================================
-# !대화도움
+# 검사 시작
 # ============================================================
 
-@bot.command(
-    name="대화도움"
-)
-async def chat_help(ctx):
+@check_members.before_loop
+async def before_check_members():
 
-    await ctx.send(
-
-        "💬 **AI 수다 사용법**\n\n"
-
-        "• `봇아 안녕` → 답변\n"
-
-        "• 봇 멘션 → 답변\n"
-
-        "• 관리자 `!대화 켜기` → 메인채팅 자동 대화\n"
-
-        "• 관리자 `!대화 끄기` → 자동 대화 OFF\n"
-
-        "• 관리자 `!대화초기화` → 현재 채널 기억 초기화"
-    )
+    await bot.wait_until_ready()
 
 
 # ============================================================
@@ -1866,7 +2205,6 @@ async def on_command_error(
 
         return
 
-
     if isinstance(
         error,
         commands.MissingPermissions
@@ -1877,7 +2215,6 @@ async def on_command_error(
         )
 
         return
-
 
     if isinstance(
         error,
@@ -1890,7 +2227,6 @@ async def on_command_error(
 
         return
 
-
     if isinstance(
         error,
         commands.MemberNotFound
@@ -1902,6 +2238,16 @@ async def on_command_error(
 
         return
 
+    if isinstance(
+        error,
+        commands.BadArgument
+    ):
+
+        await ctx.send(
+            "❌ 명령어의 값을 확인해주세요."
+        )
+
+        return
 
     print(
         f"[명령어 오류] {error}"
@@ -1917,44 +2263,29 @@ async def on_ready():
 
     print("=" * 60)
 
-
     print(
         f"로그인 완료: {bot.user}"
     )
 
-
     print(
         f"봇 ID: {bot.user.id}"
     )
-
 
     print(
         f"연결된 서버: "
         f"{len(bot.guilds)}개"
     )
 
-
     print(
-        f"AI 모델: "
-        f"{GEMINI_MODEL}"
+        "AI API: 사용하지 않음"
     )
 
-
-    if GEMINI_API_KEY:
-
-        print(
-            "Gemini API Key: 확인됨"
-        )
-
-    else:
-
-        print(
-            "Gemini API Key: 없음"
-        )
-
+    print(
+        f"학습 데이터: "
+        f"{len(learning_data)}개"
+    )
 
     print("=" * 60)
-
 
     if not check_members.is_running():
 
@@ -1977,10 +2308,8 @@ else:
         "✅ 디스코드 토큰 확인 완료"
     )
 
-
     print(
         "🤖 봇을 시작합니다..."
     )
-
 
     bot.run(TOKEN)
