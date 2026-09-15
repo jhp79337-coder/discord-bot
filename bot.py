@@ -9,8 +9,8 @@ from collections import defaultdict, deque
 import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 
 # ============================================================
@@ -20,12 +20,12 @@ from google.genai import types
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# Gemini 모델
-GEMINI_MODEL = os.getenv(
-    "GEMINI_MODEL",
-    "gemini-3.6-flash"
+# OpenRouter 무료 모델 자동 선택
+OPENROUTER_MODEL = os.getenv(
+    "OPENROUTER_MODEL",
+    "openrouter/free"
 )
 
 
@@ -93,24 +93,15 @@ bot = commands.Bot(
 
 
 # ============================================================
-# Gemini
+# OpenRouter
 # ============================================================
 
-gemini_client = None
+openrouter_ready = bool(OPENROUTER_API_KEY)
 
-if GEMINI_API_KEY:
-    try:
-        gemini_client = genai.Client(
-            api_key=GEMINI_API_KEY
-        )
-
-        print("✅ Gemini API 연결 준비 완료")
-
-    except Exception as e:
-        print(f"❌ Gemini 초기화 오류: {e}")
-
+if openrouter_ready:
+    print("✅ OpenRouter API 연결 준비 완료")
 else:
-    print("⚠️ GEMINI_API_KEY가 없습니다.")
+    print("⚠️ OPENROUTER_API_KEY가 없습니다.")
 
 
 # ============================================================
@@ -708,7 +699,7 @@ def add_chat_history(
 
 
 # ============================================================
-# Gemini 프롬프트
+# AI 프롬프트
 # ============================================================
 
 def build_ai_prompt(message):
@@ -766,15 +757,14 @@ def build_ai_prompt(message):
 
 
 # ============================================================
-# Gemini 답변
+# AI 답변
 # ============================================================
 
 async def generate_ai_reply(message):
 
-    if not gemini_client:
-
+    if not openrouter_ready:
         return (
-            "Gemini API 키가 아직 설정 안 됐어 ㅋㅋ"
+            "OpenRouter API 키가 아직 설정 안 됐어 ㅋㅋ"
         )
 
     user_id = message.author.id
@@ -803,47 +793,93 @@ async def generate_ai_reply(message):
 다시 한 번 강조한다.
 
 반드시 한국어로만 답변해라.
-
 영어로 답변하지 마라.
-
 사용자가 영어로 말하더라도 자연스러운 한국어로 대답해라.
-
 이전 대화가 영어였더라도 영어 답변을 이어가지 마라.
-
 답변에 "the bot's response:"를 절대로 넣지 마라.
 """
 
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": full_system_prompt
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "temperature": 0.9,
+        "max_tokens": 300
+    }
+
     try:
+        body = json.dumps(
+            payload,
+            ensure_ascii=False
+        ).encode("utf-8")
 
-        response = await asyncio.to_thread(
-
-            gemini_client.models.generate_content,
-
-            model=GEMINI_MODEL,
-
-            contents=prompt,
-
-            config=types.GenerateContentConfig(
-
-                system_instruction=full_system_prompt,
-
-                temperature=0.9,
-
-                max_output_tokens=300
-            )
+        request = Request(
+            "https://openrouter.ai/api/v1/chat/completions",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://discord.com/",
+                "X-Title": "Discord Community Bot"
+            },
+            method="POST"
         )
 
-        answer = response.text
+        def call_openrouter():
+            with urlopen(
+                request,
+                timeout=60
+            ) as response:
+                return json.loads(
+                    response.read().decode("utf-8")
+                )
 
-        if not answer:
+        response_data = await asyncio.to_thread(
+            call_openrouter
+        )
 
+        choices = response_data.get(
+            "choices",
+            []
+        )
+
+        if not choices:
             return (
                 "음... 잠깐 머리 좀 굴려볼게 ㅋㅋ"
             )
 
-        answer = answer.strip()
+        message_data = choices[0].get(
+            "message",
+            {}
+        )
 
-        # 혹시 Gemini가 붙였을 경우 제거
+        answer = message_data.get(
+            "content",
+            ""
+        )
+
+        if isinstance(answer, list):
+            answer = "".join(
+                item.get("text", "")
+                for item in answer
+                if isinstance(item, dict)
+            )
+
+        if not answer:
+            return (
+                "음... 잠깐 머리 좀 굴려볼게 ㅋㅋ"
+            )
+
+        answer = str(answer).strip()
+
         answer = re.sub(
             r"^\s*the bot'?s response\s*:\s*",
             "",
@@ -858,20 +894,46 @@ async def generate_ai_reply(message):
             flags=re.IGNORECASE
         )
 
-        # Discord 메시지 길이 제한
         if len(answer) > 1900:
-
-            answer = (
-                answer[:1900]
-                + "..."
-            )
+            answer = answer[:1900] + "..."
 
         return answer
 
-    except Exception as e:
+    except HTTPError as e:
+        try:
+            error_body = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            error_body = str(e)
 
         print(
-            f"[Gemini 오류] "
+            f"[OpenRouter 오류] HTTP {e.code}: "
+            f"{error_body}"
+        )
+
+        if e.code == 429:
+            return (
+                "AI 사용량이 잠깐 꽉 찼어 ㅠㅠ "
+                "조금 있다가 다시 불러줘."
+            )
+
+        return (
+            "AI 연결에서 오류났네 ㅋㅋ "
+            "조금 있다가 다시 불러봐."
+        )
+
+    except URLError as e:
+        print(
+            f"[OpenRouter 네트워크 오류] {e}"
+        )
+
+        return (
+            "AI 서버 연결이 잠깐 안 되네 ㅠㅠ "
+            "조금 있다가 다시 불러봐."
+        )
+
+    except Exception as e:
+        print(
+            f"[OpenRouter 오류] "
             f"{type(e).__name__}: {e}"
         )
 
@@ -1667,14 +1729,14 @@ async def on_ready():
     )
 
     print(
-        f"Gemini 모델: {GEMINI_MODEL}"
+        f"OpenRouter 모델: {OPENROUTER_MODEL}"
     )
 
     print(
         "AI 대화: "
         + (
             "사용 가능"
-            if gemini_client
+            if openrouter_ready
             else "API 키 없음"
         )
     )
