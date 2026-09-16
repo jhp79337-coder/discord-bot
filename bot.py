@@ -1,3 +1,4 @@
+```python
 import os
 import re
 import json
@@ -23,7 +24,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 GEMINI_MODEL = os.getenv(
     "GEMINI_MODEL",
-    "gemini-3.8-flash"
+    "gemini-2.5-flash-lite"
 )
 
 
@@ -239,10 +240,15 @@ def ensure_member(member):
         now = utcnow().isoformat()
 
         members_data[key] = {
+
             "joined": now,
+
             "last_activity": now,
+
             "intro": False,
+
             "birth_year": None,
+
             "gender": None
         }
 
@@ -374,7 +380,9 @@ def parse_intro(text):
         gender = "female"
 
     return {
+
         "birth_year": birth_year,
+
         "gender": gender
     }
 
@@ -415,6 +423,7 @@ async def apply_intro_roles(
     )
 
     add_roles = []
+
     remove_roles = []
 
     if gender == "male":
@@ -522,11 +531,9 @@ def should_ai_chat(message):
     content = message.content.strip()
 
     if not content:
-
         return False
 
     if content.startswith("!"):
-
         return False
 
     if (
@@ -704,8 +711,11 @@ def add_chat_history(
     )
 
     chat_history[key].append({
+
         "user": message.author.display_name,
+
         "content": message.content.strip(),
+
         "answer": answer
     })
 
@@ -804,77 +814,105 @@ async def generate_ai_reply(
         message
     )
 
-    try:
+    # --------------------------------------------------------
+    # 최대 3회 재시도
+    # --------------------------------------------------------
 
-        response = await asyncio.to_thread(
+    for attempt in range(3):
 
-            lambda: gemini_client.chat.completions.create(
+        try:
 
-                model=GEMINI_MODEL,
+            response = await asyncio.to_thread(
 
-                messages=[
-                    {
-                        "role": "system",
-                        "content": SYSTEM_PROMPT
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
+                lambda: gemini_client.chat.completions.create(
 
-                temperature=0.8,
+                    model=GEMINI_MODEL,
 
-                max_tokens=400
-            )
-        )
+                    messages=[
 
-        answer = response.choices[0].message.content
+                        {
+                            "role": "system",
+                            "content": SYSTEM_PROMPT
+                        },
 
-        if not answer:
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
 
-            return (
-                "잠시 생각이 필요합니다."
-            )
+                    ],
 
-        answer = str(
-            answer
-        ).strip()
+                    temperature=0.8,
 
-        answer = re.sub(
-            r"^\s*(JARVIS|자비스|AI|Bot|Assistant)\s*:\s*",
-            "",
-            answer,
-            flags=re.IGNORECASE
-        )
-
-        answer = re.sub(
-            r"^\s*the bot'?s response\s*:\s*",
-            "",
-            answer,
-            flags=re.IGNORECASE
-        )
-
-        if len(answer) > 1900:
-
-            answer = (
-                answer[:1900]
-                + "..."
+                    max_tokens=400
+                )
             )
 
-        return answer
+            answer = response.choices[0].message.content
 
-    except Exception as e:
+            if not answer:
 
-        print(
-            f"[Gemini 오류] "
-            f"{type(e).__name__}: {e}"
-        )
+                return (
+                    "잠시 생각이 필요합니다."
+                )
 
-        return (
-            "현재 AI 연결에 문제가 있습니다. "
-            "잠시 후 다시 호출해 주세요."
-        )
+            answer = str(
+                answer
+            ).strip()
+
+            answer = re.sub(
+                r"^\s*(JARVIS|자비스|AI|Bot|Assistant)\s*:\s*",
+                "",
+                answer,
+                flags=re.IGNORECASE
+            )
+
+            answer = re.sub(
+                r"^\s*the bot'?s response\s*:\s*",
+                "",
+                answer,
+                flags=re.IGNORECASE
+            )
+
+            if len(answer) > 1900:
+
+                answer = (
+                    answer[:1900]
+                    + "..."
+                )
+
+            return answer
+
+        except Exception as e:
+
+            error_text = str(e)
+
+            print(
+                f"[Gemini 오류 {attempt + 1}/3] "
+                f"{type(e).__name__}: {error_text}"
+            )
+
+            # 503 / 일시적인 서버 오류
+            if (
+                "503" in error_text
+                or "UNAVAILABLE" in error_text
+                or "high demand" in error_text.lower()
+            ):
+
+                if attempt < 2:
+
+                    await asyncio.sleep(
+                        3 * (attempt + 1)
+                    )
+
+                    continue
+
+            break
+
+    return (
+        "현재 Gemini 연결이 잠시 불안정합니다. "
+        "조금 후 다시 호출해 주세요."
+    )
 
 
 # ============================================================
@@ -887,7 +925,6 @@ async def on_member_join(
 ):
 
     if member.bot:
-
         return
 
     now = utcnow().isoformat()
@@ -944,7 +981,6 @@ async def on_message(
 ):
 
     if message.author.bot:
-
         return
 
     if not isinstance(
@@ -1313,7 +1349,6 @@ async def manual_check(
         for member in guild.members:
 
             if is_exempt(member):
-
                 continue
 
             data = members_data.get(
@@ -1321,7 +1356,6 @@ async def manual_check(
             )
 
             if not data:
-
                 continue
 
             try:
@@ -1477,7 +1511,6 @@ async def on_voice_state_update(
 ):
 
     if member.bot:
-
         return
 
     if (
@@ -1517,7 +1550,6 @@ async def check_members():
         for member in guild.members:
 
             if is_exempt(member):
-
                 continue
 
             data = members_data.get(
@@ -1525,7 +1557,6 @@ async def check_members():
             )
 
             if not data:
-
                 continue
 
             try:
@@ -1762,3 +1793,4 @@ else:
     bot.run(
         DISCORD_TOKEN
     )
+```
