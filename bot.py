@@ -298,26 +298,39 @@ async def send_kick_log(member, reason):
         return
 
     embed = discord.Embed(
-        title="🚪 자동 추방",
-        description=f"{member.mention} 님이 서버에서 추방되었습니다.",
+        title="🚪・멤버 자동 추방",
+        description=(
+            f"{member.mention} 님이 서버에서 추방되었습니다.\n\n"
+            "자기소개 미작성 및 장기간 활동 없음으로 "
+            "자동 처리되었습니다."
+        ),
         color=discord.Color.red(),
         timestamp=now_utc()
     )
 
     embed.add_field(
-        name="사유",
-        value=reason,
+        name="👤 사용자",
+        value=f"{member} (`{member.id}`)",
         inline=False
     )
 
     embed.add_field(
-        name="사용자",
-        value=f"{member} ({member.id})",
+        name="📋 처리 사유",
+        value=reason,
         inline=False
+    )
+
+    embed.set_thumbnail(
+        url=member.display_avatar.url
+    )
+
+    embed.set_footer(
+        text="JARVIS・자동 관리 시스템"
     )
 
     try:
         await channel.send(embed=embed)
+
     except Exception as e:
         print(f"[추방 로그 오류] {e}")
 
