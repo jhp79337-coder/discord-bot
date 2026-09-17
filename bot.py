@@ -18,10 +18,10 @@ load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 INTRO_KEYWORD = "자기소개"
-LOG_CHANNEL_NAME = "추방-로그"
+LOG_CHANNEL_NAME = "🚪・추방로그"
 
 GRACE_DAYS = 3
 CHECK_MINUTES = 30
@@ -638,12 +638,59 @@ async def on_message(message):
             )
 
             try:
-                await message.reply(
-                    f"✅ 자기소개 확인 완료!\n"
-                    f"출생년도: {birth_year}년\n"
-                    f"성별: {gender_text}\n"
-                    f"구분: {age_type}"
+                embed = discord.Embed(
+                    title="🖤・어서 와요",
+                    description=(
+                        f"♡ {message.author.mention} 님, 자기소개 확인했어 ♡\n\n"
+                        "이제 미인증 딱지는 떼어둘게요.\n"
+                        "천천히 둘러보다가 마음에 드는 곳에서 놀아요.\n\n"
+                        "━━━━━━━━━━━━━━━━━━"
+                    ),
+                    color=discord.Color.from_rgb(45, 20, 45),
+                    timestamp=now_utc()
                 )
+
+                embed.add_field(
+                    name="♡ 가입 정보",
+                    value=(
+                        f"🎂 `{birth_year}년생`\n"
+                        f"👤 `{gender_text}`\n"
+                        f"🔞 `{age_type}`"
+                    ),
+                    inline=False
+                )
+
+                embed.add_field(
+                    name="✦ 이제 뭐 하면 돼?",
+                    value=(
+                        "🪪 <#1547582628369276938> — 자기소개\n"
+                        "🎀 <#1549631714769244261> — 원하는 역할 고르기\n"
+                        "💬 <#1544032267855470644> — 사람들과 이야기하기"
+                    ),
+                    inline=False
+                )
+
+                embed.add_field(
+                    name="🌙 천천히 둘러봐",
+                    value=(
+                        "처음부터 너무 급하게 친해질 필요는 없어.\n"
+                        "조용히 구경하다가 한마디씩 섞어도 되고,\n"
+                        "새벽에 갑자기 나타나도 괜찮아.\n\n"
+                        "여긴 원래 그런 곳이니까. ♡"
+                    ),
+                    inline=False
+                )
+
+                embed.set_thumbnail(
+                    url=message.author.display_avatar.url
+                )
+
+                embed.set_footer(
+                    text="새벽에 너를 기다리는 중 ・ WELCOME"
+                )
+
+                await message.reply(embed=embed)
+
             except Exception as e:
                 print(f"[자기소개 답장 오류] {e}")
 
