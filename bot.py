@@ -663,7 +663,7 @@ async def on_message(message):
             age_type = (
                 "성인"
                 if birth_year <= ADULT_CUTOFF_YEAR
-                else "미성년"
+                else "미성년자"
             )
 
             try:
