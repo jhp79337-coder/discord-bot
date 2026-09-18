@@ -17,25 +17,28 @@ load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+GEMINI_MODEL = os.getenv(
+    "GEMINI_MODEL",
+    "gemini-3.5-flash-lite"
+)
 
 INTRO_KEYWORD = "자기소개"
 LOG_CHANNEL_NAME = "🚪・추방로그"
 
 # =========================================================
-# 자동 추방 설정
+# 자동 관리 설정
 # =========================================================
 
 # 자기소개 미작성자는 자동 추방하지 않음
 INTRO_GRACE_MINUTES = None
 
-# 자기소개 완료 후 3일 동안 활동이 없으면 추방
+# 자기소개 완료 후 3일 미활동
 INACTIVE_DAYS = 3
 
 # 검사 주기
 CHECK_MINUTES = 1
 
-# 2007년생까지 성인 역할
+# 2007년생까지 성인
 ADULT_CUTOFF_YEAR = 2007
 
 # =========================================================
@@ -86,7 +89,10 @@ gemini_ready = bool(GEMINI_API_KEY)
 if gemini_ready:
     gemini_client = OpenAI(
         api_key=GEMINI_API_KEY,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        base_url=(
+            "https://generativelanguage.googleapis.com/"
+            "v1beta/openai/"
+        )
     )
 else:
     gemini_client = None
@@ -100,6 +106,9 @@ chat_settings = {}
 chat_history = {}
 ai_cooldowns = {}
 
+# 현재 관리자 확인을 기다리고 있는 멤버
+pending_kick_reviews = set()
+
 
 # =========================================================
 # JSON
@@ -110,17 +119,28 @@ def load_json(filename, default):
         if not os.path.exists(filename):
             return default
 
-        with open(filename, "r", encoding="utf-8") as f:
+        with open(
+            filename,
+            "r",
+            encoding="utf-8"
+        ) as f:
             return json.load(f)
 
     except Exception as e:
-        print(f"[파일 불러오기 오류] {filename}: {e}")
+        print(
+            f"[파일 불러오기 오류] "
+            f"{filename}: {e}"
+        )
         return default
 
 
 def save_json(filename, data):
     try:
-        with open(filename, "w", encoding="utf-8") as f:
+        with open(
+            filename,
+            "w",
+            encoding="utf-8"
+        ) as f:
             json.dump(
                 data,
                 f,
@@ -129,15 +149,25 @@ def save_json(filename, data):
             )
 
     except Exception as e:
-        print(f"[파일 저장 오류] {filename}: {e}")
+        print(
+            f"[파일 저장 오류] "
+            f"{filename}: {e}"
+        )
 
 
-members_data = load_json(MEMBERS_FILE, {})
-chat_settings = load_json(CHAT_SETTINGS_FILE, {})
+members_data = load_json(
+    MEMBERS_FILE,
+    {}
+)
+
+chat_settings = load_json(
+    CHAT_SETTINGS_FILE,
+    {}
+)
 
 
 # =========================================================
-# 시간 유틸
+# 시간
 # =========================================================
 
 def now_utc():
@@ -164,34 +194,42 @@ def get_member_data(member_id):
     key = str(member_id)
 
     if key not in members_data:
+
         members_data[key] = {
             "intro_completed": False,
             "birth_year": None,
             "gender": None,
-
-            # 중요:
-            # 자기소개를 완료한 시점부터 활동 기준을 잡기 위해
-            # 기본값은 현재 시간
-            "last_activity": iso_now(),
-
+            "last_activity": None,
             "joined_at": None,
+            "is_existing_member": True,
 
-            # 기존 회원인지 구분
-            "is_existing_member": True
+            # 추방 확인 관련
+            "kick_review_declined_until": None
         }
 
     return members_data[key]
 
 
 def update_activity(member):
-    data = get_member_data(member.id)
 
-    # 자기소개를 완료한 사람만
-    # 3일 활동 체크 대상
-    if not data.get("intro_completed"):
+    data = get_member_data(
+        member.id
+    )
+
+    # 자기소개 완료한 사람만
+    # 3일 활동 체크
+    if not data.get(
+        "intro_completed",
+        False
+    ):
         return
 
     data["last_activity"] = iso_now()
+
+    # 활동하면 이전 추방 거절 대기시간도 제거
+    data[
+        "kick_review_declined_until"
+    ] = None
 
     save_json(
         MEMBERS_FILE,
@@ -211,6 +249,7 @@ def is_adult(member):
 # =========================================================
 
 def parse_intro(content):
+
     text = content.strip()
 
     pattern = re.search(
@@ -222,7 +261,10 @@ def parse_intro(content):
     if not pattern:
         return None
 
-    year_number = int(pattern.group(1))
+    year_number = int(
+        pattern.group(1)
+    )
+
     gender_code = pattern.group(2)
 
     if year_number <= 26:
@@ -248,6 +290,7 @@ async def apply_intro_roles(
     birth_year,
     gender
 ):
+
     guild = member.guild
 
     role_ids = [
@@ -261,7 +304,10 @@ async def apply_intro_roles(
     roles = {}
 
     for role_id in role_ids:
-        role = guild.get_role(role_id)
+
+        role = guild.get_role(
+            role_id
+        )
 
         if role:
             roles[role_id] = role
@@ -274,26 +320,34 @@ async def apply_intro_roles(
     ]
 
     if remove_roles:
+
         try:
+
             await member.remove_roles(
                 *remove_roles
             )
 
         except Exception as e:
+
             print(
-                f"[역할 제거 오류] {member}: {e}"
+                f"[역할 제거 오류] "
+                f"{member}: {e}"
             )
 
     # 미인증 역할 제거
     if UNVERIFIED_ROLE_ID in roles:
+
         try:
+
             await member.remove_roles(
                 roles[UNVERIFIED_ROLE_ID]
             )
 
         except Exception as e:
+
             print(
-                f"[미인증 역할 제거 오류] {e}"
+                f"[미인증 역할 제거 오류] "
+                f"{e}"
             )
 
     # 성별 역할
@@ -304,14 +358,18 @@ async def apply_intro_roles(
     )
 
     if target_gender_role:
+
         try:
+
             await member.add_roles(
                 target_gender_role
             )
 
         except Exception as e:
+
             print(
-                f"[성별 역할 오류] {e}"
+                f"[성별 역할 오류] "
+                f"{e}"
             )
 
     # 나이 역할
@@ -322,14 +380,18 @@ async def apply_intro_roles(
     )
 
     if age_role:
+
         try:
+
             await member.add_roles(
                 age_role
             )
 
         except Exception as e:
+
             print(
-                f"[나이 역할 오류] {e}"
+                f"[나이 역할 오류] "
+                f"{e}"
             )
 
 
@@ -341,15 +403,19 @@ async def send_kick_log(
     member,
     reason
 ):
+
     channel = discord.utils.get(
         member.guild.text_channels,
         name=LOG_CHANNEL_NAME
     )
 
     if not channel:
+
         print(
-            f"[로그 채널 없음] {LOG_CHANNEL_NAME}"
+            f"[로그 채널 없음] "
+            f"{LOG_CHANNEL_NAME}"
         )
+
         return
 
     embed = discord.Embed(
@@ -365,7 +431,10 @@ async def send_kick_log(
 
     embed.add_field(
         name="👤 사용자",
-        value=f"{member} (`{member.id}`)",
+        value=(
+            f"{member} "
+            f"(`{member.id}`)"
+        ),
         inline=False
     )
 
@@ -378,13 +447,391 @@ async def send_kick_log(
     )
 
     try:
+
         await channel.send(
             embed=embed
         )
 
     except Exception as e:
+
         print(
-            f"[추방 로그 오류] {e}"
+            f"[추방 로그 오류] "
+            f"{e}"
+        )
+
+
+# =========================================================
+# 관리자 추방 확인 버튼
+# =========================================================
+
+class KickConfirmView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        member_id,
+        guild_id
+    ):
+
+        super().__init__(
+            timeout=600
+        )
+
+        self.member_id = member_id
+        self.guild_id = guild_id
+        self.finished = False
+
+    async def interaction_check(
+        self,
+        interaction
+    ):
+
+        if not interaction.user.guild_permissions.administrator:
+
+            await interaction.response.send_message(
+                "❌ 관리자만 이 버튼을 사용할 수 있습니다.",
+                ephemeral=True
+            )
+
+            return False
+
+        return True
+
+    @discord.ui.button(
+        label="추방하기",
+        style=discord.ButtonStyle.danger,
+        emoji="🚪"
+    )
+    async def confirm_kick(
+        self,
+        interaction,
+        button
+    ):
+
+        if self.finished:
+
+            await interaction.response.send_message(
+                "⚠️ 이미 처리된 요청입니다.",
+                ephemeral=True
+            )
+
+            return
+
+        self.finished = True
+
+        guild = bot.get_guild(
+            self.guild_id
+        )
+
+        if not guild:
+
+            await interaction.response.edit_message(
+                content="❌ 서버를 찾을 수 없습니다.",
+                embed=None,
+                view=None
+            )
+
+            return
+
+        member = guild.get_member(
+            self.member_id
+        )
+
+        if not member:
+
+            await interaction.response.edit_message(
+                content="⚠️ 해당 멤버가 이미 서버에 없습니다.",
+                embed=None,
+                view=None
+            )
+
+            pending_kick_reviews.discard(
+                self.member_id
+            )
+
+            return
+
+        # 봇 자신이나 관리자 보호
+        if member.bot:
+
+            await interaction.response.edit_message(
+                content="❌ 봇 계정은 이 기능으로 추방할 수 없습니다.",
+                embed=None,
+                view=None
+            )
+
+            pending_kick_reviews.discard(
+                self.member_id
+            )
+
+            return
+
+        if member.guild_permissions.administrator:
+
+            await interaction.response.edit_message(
+                content="❌ 관리자 계정은 이 기능으로 추방할 수 없습니다.",
+                embed=None,
+                view=None
+            )
+
+            pending_kick_reviews.discard(
+                self.member_id
+            )
+
+            return
+
+        try:
+
+            await send_kick_log(
+                member,
+                "관리자가 3일 미활동 추방을 승인했습니다."
+            )
+
+            await member.kick(
+                reason=(
+                    "관리자 승인 - "
+                    "자기소개 완료 후 3일 활동 없음"
+                )
+            )
+
+            await interaction.response.edit_message(
+                content=(
+                    f"✅ **{member}** 님을 "
+                    f"관리자 승인으로 추방했습니다."
+                ),
+                embed=None,
+                view=None
+            )
+
+            print(
+                f"[관리자 승인 추방] "
+                f"{member} ({member.id})"
+            )
+
+        except Exception as e:
+
+            print(
+                f"[승인 추방 실패] "
+                f"{member}: {e}"
+            )
+
+            await interaction.response.edit_message(
+                content=(
+                    "❌ 추방에 실패했습니다.\n"
+                    "봇의 역할 위치와 추방 권한을 확인해주세요."
+                ),
+                embed=None,
+                view=None
+            )
+
+        finally:
+
+            pending_kick_reviews.discard(
+                self.member_id
+            )
+
+    @discord.ui.button(
+        label="취소하기",
+        style=discord.ButtonStyle.secondary,
+        emoji="❌"
+    )
+    async def cancel_kick(
+        self,
+        interaction,
+        button
+    ):
+
+        if self.finished:
+
+            await interaction.response.send_message(
+                "⚠️ 이미 처리된 요청입니다.",
+                ephemeral=True
+            )
+
+            return
+
+        self.finished = True
+
+        guild = bot.get_guild(
+            self.guild_id
+        )
+
+        if guild:
+
+            member = guild.get_member(
+                self.member_id
+            )
+
+            if member:
+
+                data = get_member_data(
+                    member.id
+                )
+
+                # 24시간 동안 같은 사람에 대해
+                # 자동 확인창을 다시 띄우지 않음
+                data[
+                    "kick_review_declined_until"
+                ] = (
+                    now_utc()
+                    + timedelta(hours=24)
+                ).isoformat()
+
+                save_json(
+                    MEMBERS_FILE,
+                    members_data
+                )
+
+        pending_kick_reviews.discard(
+            self.member_id
+        )
+
+        await interaction.response.edit_message(
+            content=(
+                "❌ **추방을 취소했습니다.**\n"
+                "해당 멤버는 추방되지 않습니다."
+            ),
+            embed=None,
+            view=None
+        )
+
+    async def on_timeout(self):
+
+        pending_kick_reviews.discard(
+            self.member_id
+        )
+
+
+# =========================================================
+# 추방 확인 요청
+# =========================================================
+
+async def request_kick_confirmation(
+    member
+):
+
+    # 이미 확인창이 떠 있으면 중복 방지
+    if member.id in pending_kick_reviews:
+        return
+
+    # 관리자 계정은 자동 추방 후보에서 제외
+    if member.guild_permissions.administrator:
+        return
+
+    data = get_member_data(
+        member.id
+    )
+
+    # 이미 거절한 상태라면 24시간 대기
+    declined_until = data.get(
+        "kick_review_declined_until"
+    )
+
+    if declined_until:
+
+        declined_time = parse_datetime(
+            declined_until
+        )
+
+        if now_utc() < declined_time:
+            return
+
+        data[
+            "kick_review_declined_until"
+        ] = None
+
+        save_json(
+            MEMBERS_FILE,
+            members_data
+        )
+
+    channel = discord.utils.get(
+        member.guild.text_channels,
+        name=LOG_CHANNEL_NAME
+    )
+
+    if not channel:
+
+        print(
+            f"[추방 확인 채널 없음] "
+            f"{LOG_CHANNEL_NAME}"
+        )
+
+        return
+
+    pending_kick_reviews.add(
+        member.id
+    )
+
+    embed = discord.Embed(
+        title="⚠️・추방 확인 필요",
+        description=(
+            f"**{member.mention}** 님이 "
+            f"자기소개 완료 후 "
+            f"**3일 동안 활동이 없습니다.**\n\n"
+            f"정말 이 멤버를 추방하시겠습니까?\n\n"
+            f"🚪 **추방하기** → 실제 추방\n"
+            f"❌ **취소하기** → 추방하지 않음\n\n"
+            f"※ 봇은 관리자 확인 없이 "
+            f"절대로 추방하지 않습니다."
+        ),
+        color=discord.Color.orange(),
+        timestamp=now_utc()
+    )
+
+    embed.add_field(
+        name="👤 멤버",
+        value=(
+            f"{member} "
+            f"(`{member.id}`)"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="📅 마지막 활동",
+        value=(
+            data.get(
+                "last_activity",
+                "없음"
+            )
+        ),
+        inline=False
+    )
+
+    embed.set_thumbnail(
+        url=member.display_avatar.url
+    )
+
+    embed.set_footer(
+        text="JARVIS・관리자 승인 시스템"
+    )
+
+    try:
+
+        await channel.send(
+            embed=embed,
+            view=KickConfirmView(
+                member.id,
+                member.guild.id
+            )
+        )
+
+        print(
+            f"[추방 확인 요청] "
+            f"{member} ({member.id})"
+        )
+
+    except Exception as e:
+
+        pending_kick_reviews.discard(
+            member.id
+        )
+
+        print(
+            f"[추방 확인 요청 오류] "
+            f"{e}"
         )
 
 
@@ -436,6 +883,7 @@ SYSTEM_PROMPT = """
 # =========================================================
 
 def get_ai_mode(message):
+
     channel_name = message.channel.name
 
     if channel_name == ADULT_19_CHANNEL:
@@ -451,53 +899,61 @@ def get_ai_mode(message):
 
 
 def should_ai_chat(message):
+
     if not message.guild:
         return False
 
     content = message.content.strip()
     mode = get_ai_mode(message)
 
-    # 성인 채널
-    if mode in ["adult", "adult_19"]:
+    if mode in [
+        "adult",
+        "adult_19"
+    ]:
 
-        # 성인 역할이 없으면 AI 응답 안 함
-        if not is_adult(message.author):
+        if not is_adult(
+            message.author
+        ):
             return False
 
-        # 봇 멘션
         if (
             bot.user
-            and bot.user.mentioned_in(message)
+            and bot.user.mentioned_in(
+                message
+            )
         ):
             return True
 
-        # 자비스
-        if content.startswith("자비스"):
+        if content.startswith(
+            "자비스"
+        ):
             return True
 
-        # 봇
-        if content.startswith("봇 "):
+        if content.startswith(
+            "봇 "
+        ):
             return True
 
-        # 성인채팅 / 19금 채널은 자동 대화
         return True
 
-    # 봇 멘션
     if (
         bot.user
-        and bot.user.mentioned_in(message)
+        and bot.user.mentioned_in(
+            message
+        )
     ):
         return True
 
-    # 자비스
-    if content.startswith("자비스"):
+    if content.startswith(
+        "자비스"
+    ):
         return True
 
-    # 봇
-    if content.startswith("봇 "):
+    if content.startswith(
+        "봇 "
+    ):
         return True
 
-    # 메인채팅 자동 대화
     enabled = chat_settings.get(
         str(message.guild.id),
         False
@@ -505,7 +961,8 @@ def should_ai_chat(message):
 
     if (
         enabled
-        and "메인채팅" in message.channel.name
+        and "메인채팅"
+        in message.channel.name
     ):
         return True
 
@@ -523,10 +980,12 @@ async def generate_ai_reply(
     content,
     mode="normal"
 ):
+
     if (
         not gemini_ready
         or gemini_client is None
     ):
+
         return (
             "⚠️ 아직 Gemini API 키가 "
             "설정되지 않았어요."
@@ -539,9 +998,12 @@ async def generate_ai_reply(
     if history_key not in chat_history:
         chat_history[history_key] = []
 
-    history = chat_history[history_key]
+    history = chat_history[
+        history_key
+    ]
 
     mode_instruction = {
+
         "normal":
             "현재는 일반 대화 모드야.",
 
@@ -564,6 +1026,7 @@ async def generate_ai_reply(
                 "성적인 암시를 사용할 수 있어. "
                 "구체적인 성행위 묘사는 하지 마."
             )
+
     }.get(
         mode,
         "현재는 일반 대화 모드야."
@@ -593,6 +1056,7 @@ async def generate_ai_reply(
     for attempt in range(3):
 
         try:
+
             response = await asyncio.to_thread(
                 gemini_client.chat.completions.create,
                 model=GEMINI_MODEL,
@@ -628,29 +1092,35 @@ async def generate_ai_reply(
             })
 
             if len(history) > 40:
-                chat_history[history_key] = (
-                    history[-40:]
-                )
+                chat_history[
+                    history_key
+                ] = history[-40:]
 
             return reply[:1900]
 
         except Exception as e:
+
             error_text = str(e)
 
             print(
-                f"[Gemini 오류] {error_text}"
+                f"[Gemini 오류] "
+                f"{error_text}"
             )
 
             if (
                 "503" in error_text
-                or "UNAVAILABLE" in error_text
+                or "UNAVAILABLE"
+                in error_text
                 or "high demand"
                 in error_text.lower()
             ):
+
                 if attempt < 2:
+
                     await asyncio.sleep(
                         3 * (attempt + 1)
                     )
+
                     continue
 
             return (
@@ -659,14 +1129,18 @@ async def generate_ai_reply(
                 "조금 있다가 다시 말해주세요."
             )
 
-    return "⚠️ AI 응답에 실패했어요."
+    return (
+        "⚠️ AI 응답에 실패했어요."
+    )
 
 
 # =========================================================
 # 멤버 검사
 # =========================================================
 
-@tasks.loop(minutes=CHECK_MINUTES)
+@tasks.loop(
+    minutes=CHECK_MINUTES
+)
 async def check_members():
 
     current_time = now_utc()
@@ -679,43 +1153,38 @@ async def check_members():
             if member.bot:
                 continue
 
+            # 관리자 제외
+            if member.guild_permissions.administrator:
+                continue
+
             key = str(member.id)
 
-            # =================================================
-            # 중요 안전장치
-            #
-            # members.json에 기록이 없는 기존 회원은
-            # 자동 추방하지 않는다.
-            # =================================================
-
+            # members.json에 없는 기존 회원
+            # 절대로 자동 처리하지 않음
             if key not in members_data:
                 continue
 
             data = members_data[key]
 
-            # =================================================
-            # 자기소개를 안 한 사람
-            #
-            # 절대로 자동 추방하지 않음
-            # =================================================
-
+            # 자기소개 미작성자는
+            # 절대로 추방하지 않음
             if not data.get(
                 "intro_completed",
                 False
             ):
                 continue
 
-            # =================================================
-            # 자기소개 완료 회원
-            #
-            # 마지막 활동으로부터 3일 체크
-            # =================================================
+            # 마지막 활동 기록이 없으면
+            # 안전을 위해 건너뜀
+            last_activity_value = data.get(
+                "last_activity"
+            )
+
+            if not last_activity_value:
+                continue
 
             last_activity = parse_datetime(
-                data.get(
-                    "last_activity",
-                    iso_now()
-                )
+                last_activity_value
             )
 
             inactive = (
@@ -727,40 +1196,20 @@ async def check_members():
             if not inactive:
                 continue
 
-            # =================================================
-            # 3일 미활동 자동 추방
-            # =================================================
+            # 이미 관리자 확인창이 있으면
+            # 또 만들지 않음
+            if member.id in pending_kick_reviews:
+                continue
 
-            try:
-
-                await send_kick_log(
-                    member,
-                    "자기소개 완료 후 "
-                    "3일 동안 활동이 없습니다."
-                )
-
-                await member.kick(
-                    reason=(
-                        "자기소개 완료 후 "
-                        "3일 활동 없음"
-                    )
-                )
-
-                print(
-                    f"[3일 자동 추방] "
-                    f"{member} ({member.id})"
-                )
-
-            except Exception as e:
-
-                print(
-                    f"[3일 자동 추방 실패] "
-                    f"{member}: {e}"
-                )
+            # 관리자에게 확인 요청
+            await request_kick_confirmation(
+                member
+            )
 
 
 @check_members.before_loop
 async def before_check_members():
+
     await bot.wait_until_ready()
 
 
@@ -771,7 +1220,7 @@ async def before_check_members():
 @bot.event
 async def on_ready():
 
-    print("=" * 50)
+    print("=" * 60)
 
     print("JARVIS ONLINE")
     print(
@@ -788,26 +1237,33 @@ async def on_ready():
     )
 
     if gemini_ready:
+
         print(
             "Gemini AI : ONLINE"
         )
+
     else:
+
         print(
             "Gemini AI : API KEY 없음"
         )
 
     print(
-        "자동 추방 : 자기소개 완료 후 "
-        "3일 미활동"
+        "자동 추방 : OFF"
+    )
+
+    print(
+        "3일 미활동 : 관리자 확인 필요"
     )
 
     print(
         "자기소개 10분 제한 : OFF"
     )
 
-    print("=" * 50)
+    print("=" * 60)
 
     if not check_members.is_running():
+
         check_members.start()
 
 
@@ -821,8 +1277,9 @@ async def on_member_join(member):
     if member.bot:
         return
 
-    # 새 가입자 기록
-    members_data[str(member.id)] = {
+    members_data[
+        str(member.id)
+    ] = {
 
         "intro_completed": False,
 
@@ -834,7 +1291,9 @@ async def on_member_join(member):
 
         "joined_at": iso_now(),
 
-        "is_existing_member": False
+        "is_existing_member": False,
+
+        "kick_review_declined_until": None
     }
 
     save_json(
@@ -842,7 +1301,7 @@ async def on_member_join(member):
         members_data
     )
 
-    # 미인증 역할
+    # 미인증 역할 지급
     role = member.guild.get_role(
         UNVERIFIED_ROLE_ID
     )
@@ -883,7 +1342,7 @@ async def on_message(message):
         return
 
     # =====================================================
-    # 자기소개 처리
+    # 자기소개
     # =====================================================
 
     if INTRO_KEYWORD in message.channel.name:
@@ -900,15 +1359,28 @@ async def on_message(message):
                 message.author.id
             )
 
-            # 자기소개 완료
-            data["intro_completed"] = True
+            data[
+                "intro_completed"
+            ] = True
 
-            data["birth_year"] = birth_year
+            data[
+                "birth_year"
+            ] = birth_year
 
-            data["gender"] = gender
+            data[
+                "gender"
+            ] = gender
 
-            # ★ 여기부터 3일 카운트 시작
-            data["last_activity"] = iso_now()
+            # 자기소개 완료 순간부터
+            # 3일 카운트
+            data[
+                "last_activity"
+            ] = iso_now()
+
+            # 이전 추방 거절 상태 제거
+            data[
+                "kick_review_declined_until"
+            ] = None
 
             save_json(
                 MEMBERS_FILE,
@@ -951,21 +1423,31 @@ async def on_message(message):
             except Exception as e:
 
                 print(
-                    f"[자기소개 답장 오류] {e}"
+                    f"[자기소개 답장 오류] "
+                    f"{e}"
                 )
 
     # =====================================================
     # 활동 기록
-    #
-    # 자기소개 완료한 사람만 기록
     # =====================================================
 
     data = get_member_data(
         message.author.id
     )
 
-    if data.get("intro_completed"):
-        data["last_activity"] = iso_now()
+    if data.get(
+        "intro_completed"
+    ):
+
+        data[
+            "last_activity"
+        ] = iso_now()
+
+        # 활동했으므로
+        # 추방 확인 거절 대기 제거
+        data[
+            "kick_review_declined_until"
+        ] = None
 
         save_json(
             MEMBERS_FILE,
@@ -973,18 +1455,22 @@ async def on_message(message):
         )
 
     # =====================================================
-    # AI 대화
+    # AI
     # =====================================================
 
     mode = get_ai_mode(
         message
     )
 
-    # 성인 채널
-    # 미성년자는 AI 응답 안 함
+    # 성인 채널 미성년자 차단
     if (
-        mode in ["adult", "adult_19"]
-        and not is_adult(message.author)
+        mode in [
+            "adult",
+            "adult_19"
+        ]
+        and not is_adult(
+            message.author
+        )
     ):
 
         await bot.process_commands(
@@ -993,7 +1479,9 @@ async def on_message(message):
 
         return
 
-    if should_ai_chat(message):
+    if should_ai_chat(
+        message
+    ):
 
         now = now_utc()
 
@@ -1021,7 +1509,6 @@ async def on_message(message):
 
         content = message.content
 
-        # 봇 멘션 제거
         if bot.user:
 
             content = content.replace(
@@ -1031,16 +1518,18 @@ async def on_message(message):
 
         content = content.strip()
 
-        # 자비스 제거
-        if content.startswith("자비스"):
+        if content.startswith(
+            "자비스"
+        ):
 
             content = (
                 content[3:]
                 .strip()
             )
 
-        # 봇 제거
-        if content.startswith("봇 "):
+        if content.startswith(
+            "봇 "
+        ):
 
             content = (
                 content[2:]
@@ -1069,7 +1558,8 @@ async def on_message(message):
         except Exception as e:
 
             print(
-                f"[AI 답장 오류] {e}"
+                f"[AI 답장 오류] "
+                f"{e}"
             )
 
     await bot.process_commands(
@@ -1091,17 +1581,23 @@ async def on_voice_state_update(
     if member.bot:
         return
 
-    # 채널 이동/입장/퇴장
     if before.channel != after.channel:
 
         data = get_member_data(
             member.id
         )
 
-        # 자기소개 완료한 사람만
-        if data.get("intro_completed"):
+        if data.get(
+            "intro_completed"
+        ):
 
-            data["last_activity"] = iso_now()
+            data[
+                "last_activity"
+            ] = iso_now()
+
+            data[
+                "kick_review_declined_until"
+            ] = None
 
             save_json(
                 MEMBERS_FILE,
@@ -1113,7 +1609,9 @@ async def on_voice_state_update(
 # !상태
 # =========================================================
 
-@bot.command(name="상태")
+@bot.command(
+    name="상태"
+)
 @commands.has_permissions(
     administrator=True
 )
@@ -1125,7 +1623,9 @@ async def status_command(ctx):
 
     intro = (
         "완료"
-        if data.get("intro_completed")
+        if data.get(
+            "intro_completed"
+        )
         else "미작성"
     )
 
@@ -1172,7 +1672,9 @@ async def status_command(ctx):
 # !대화
 # =========================================================
 
-@bot.command(name="대화")
+@bot.command(
+    name="대화"
+)
 @commands.has_permissions(
     administrator=True
 )
@@ -1260,7 +1762,9 @@ async def chat_toggle(
 # !기억초기화
 # =========================================================
 
-@bot.command(name="기억초기화")
+@bot.command(
+    name="기억초기화"
+)
 @commands.has_permissions(
     administrator=True
 )
@@ -1291,7 +1795,9 @@ async def clear_memory(ctx):
 # !검사
 # =========================================================
 
-@bot.command(name="검사")
+@bot.command(
+    name="검사"
+)
 @commands.has_permissions(
     administrator=True
 )
@@ -1309,7 +1815,9 @@ async def check_user(
 
     intro = (
         "완료"
-        if data.get("intro_completed")
+        if data.get(
+            "intro_completed"
+        )
         else "미작성"
     )
 
@@ -1368,7 +1876,9 @@ async def check_user(
 # !자기소개초기화
 # =========================================================
 
-@bot.command(name="자기소개초기화")
+@bot.command(
+    name="자기소개초기화"
+)
 @commands.has_permissions(
     administrator=True
 )
@@ -1384,10 +1894,25 @@ async def reset_intro(
         member.id
     )
 
-    data["intro_completed"] = False
-    data["birth_year"] = None
-    data["gender"] = None
-    data["last_activity"] = None
+    data[
+        "intro_completed"
+    ] = False
+
+    data[
+        "birth_year"
+    ] = None
+
+    data[
+        "gender"
+    ] = None
+
+    data[
+        "last_activity"
+    ] = None
+
+    data[
+        "kick_review_declined_until"
+    ] = None
 
     save_json(
         MEMBERS_FILE,
@@ -1404,7 +1929,9 @@ async def reset_intro(
 # !추방로그테스트
 # =========================================================
 
-@bot.command(name="추방로그테스트")
+@bot.command(
+    name="추방로그테스트"
+)
 @commands.has_permissions(
     administrator=True
 )
