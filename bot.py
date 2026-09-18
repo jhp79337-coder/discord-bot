@@ -24,7 +24,8 @@ INTRO_KEYWORD = "자기소개"
 LOG_CHANNEL_NAME = "🚪・추방로그"
 
 GRACE_DAYS = 3
-CHECK_MINUTES = 30
+CHECK_MINUTES = 1
+INTRO_GRACE_MINUTES = 10
 
 # 2007년생까지 성인 역할
 ADULT_CUTOFF_YEAR = 2007
@@ -154,7 +155,14 @@ def get_member_data(member_id):
 
 
 def update_activity(member):
-    data = get_member_data(member.id)
+    key = str(member.id)
+
+    # 새로 가입해서 기록이 만들어진 멤버만 활동을 추적합니다.
+    # 기존 멤버에게는 자동 추방용 타이머가 새로 생기지 않습니다.
+    if key not in members_data:
+        return
+
+    data = members_data[key]
     data["last_activity"] = iso_now()
     save_json(MEMBERS_FILE, members_data)
 
@@ -508,37 +516,63 @@ async def check_members():
             if member.bot:
                 continue
 
-            data = get_member_data(member.id)
-
-            if data.get("intro_completed"):
+            # 봇이 기록한 가입 데이터가 없는 기존 멤버는 제외합니다.
+            key = str(member.id)
+            if key not in members_data:
                 continue
 
+            data = members_data[key]
+
+            # 자기소개를 완료한 멤버는 3일 활동 기준으로 검사합니다.
+            if data.get("intro_completed"):
+                last_activity = parse_datetime(
+                    data.get("last_activity", iso_now())
+                )
+
+                inactive = (
+                    current_time - last_activity
+                ) >= timedelta(days=GRACE_DAYS)
+
+                if inactive:
+                    try:
+                        await send_kick_log(
+                            member,
+                            "자기소개 완료 후 3일 동안 활동이 없습니다."
+                        )
+
+                        await member.kick(
+                            reason="자기소개 완료 후 3일 활동 없음"
+                        )
+
+                        print(
+                            f"[자동 추방] {member} ({member.id})"
+                        )
+
+                    except Exception as e:
+                        print(
+                            f"[자동 추방 실패] {member}: {e}"
+                        )
+
+                continue
+
+            # 새로 가입한 멤버는 10분 안에 자기소개를 작성해야 합니다.
             joined_at = parse_datetime(
                 data.get("joined_at", iso_now())
             )
 
-            last_activity = parse_datetime(
-                data.get("last_activity", iso_now())
-            )
-
-            joined_expired = (
+            intro_expired = (
                 current_time - joined_at
-            ) >= timedelta(days=GRACE_DAYS)
+            ) >= timedelta(minutes=INTRO_GRACE_MINUTES)
 
-            inactive = (
-                current_time - last_activity
-            ) >= timedelta(days=GRACE_DAYS)
-
-            if joined_expired and inactive:
-
+            if intro_expired:
                 try:
                     await send_kick_log(
                         member,
-                        "3일 동안 자기소개가 없고 활동 기록이 없습니다."
+                        "가입 후 10분 동안 자기소개를 작성하지 않았습니다."
                     )
 
                     await member.kick(
-                        reason="자기소개 미작성 + 3일 활동 없음"
+                        reason="가입 후 10분 자기소개 미작성"
                     )
 
                     print(
@@ -663,51 +697,20 @@ async def on_message(message):
             age_type = (
                 "성인"
                 if birth_year <= ADULT_CUTOFF_YEAR
-                else "미성년자"
+                else "미성년"
             )
 
             try:
                 embed = discord.Embed(
-                    title="🖤・어서 와요",
+                    title="🖤・♡・어서 와요",
                     description=(
                         f"♡ {message.author.mention} 님, 자기소개 확인했어 ♡\n\n"
-                        "이제 미인증 딱지는 떼어둘게요.\n"
-                        "천천히 둘러보다가 마음에 드는 곳에서 놀아요.\n\n"
-                        "━━━━━━━━━━━━━━━━━━"
+                        f"`{birth_year}년생` · `{gender_text}` · `{age_type}`\n\n"
+                        "🎀 <#1549631714769244261> 에서 역할을 골라주세요.\n"
+                        "💬 <#1544032267855470644> 에서 편하게 놀아요 ♡"
                     ),
                     color=discord.Color.from_rgb(45, 20, 45),
                     timestamp=now_utc()
-                )
-
-                embed.add_field(
-                    name="♡ 가입 정보",
-                    value=(
-                        f"🎂 `{birth_year}년생`\n"
-                        f"👤 `{gender_text}`\n"
-                        f"🔞 `{age_type}`"
-                    ),
-                    inline=False
-                )
-
-                embed.add_field(
-                    name="✦ 이제 뭐 하면 돼?",
-                    value=(
-                        "🪪 <#1547582628369276938> — 자기소개\n"
-                        "🎀 <#1549631714769244261> — 원하는 역할 고르기\n"
-                        "💬 <#1544032267855470644> — 사람들과 이야기하기"
-                    ),
-                    inline=False
-                )
-
-                embed.add_field(
-                    name="🌙 천천히 둘러봐",
-                    value=(
-                        "처음부터 너무 급하게 친해질 필요는 없어.\n"
-                        "조용히 구경하다가 한마디씩 섞어도 되고,\n"
-                        "새벽에 갑자기 나타나도 괜찮아.\n\n"
-                        "여긴 원래 그런 곳이니까. ♡"
-                    ),
-                    inline=False
                 )
 
                 embed.set_thumbnail(
