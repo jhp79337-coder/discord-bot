@@ -36,7 +36,13 @@ INTRO_DEADLINE_DAYS = 30
 # 추방 대상 검사 주기
 CHECK_MINUTES = 1
 
-# 2007년생부터 성인
+# =========================================================
+# 성인 기준
+#
+# 2007년생까지 성인
+# 2008년생부터 미성년
+# =========================================================
+
 ADULT_CUTOFF_YEAR = 2007
 
 # AI 채널
@@ -131,6 +137,7 @@ def parse_time(value):
         return None
 
     try:
+
         dt = datetime.fromisoformat(value)
 
         if dt.tzinfo is None:
@@ -141,6 +148,7 @@ def parse_time(value):
         return dt
 
     except Exception:
+
         return None
 
 
@@ -259,8 +267,6 @@ def parse_intro(content):
     # 04ㄴ
     # 04여
     # 04ㅇ
-    #
-    # 앞뒤에 글이 있어도 인식
     # =====================================================
 
     pattern = (
@@ -380,13 +386,18 @@ async def apply_member_roles(
 
     # =====================================================
     # 성인 / 미성년
+    #
+    # 2007년생까지 성인
+    # 2008년생부터 미성년
     # =====================================================
 
-    if birth_year >= ADULT_CUTOFF_YEAR:
+    if birth_year <= ADULT_CUTOFF_YEAR:
 
+        # 성인 역할 지급
         if adult:
             roles_to_add.append(adult)
 
+        # 미성년 역할 제거
         if minor:
 
             if minor in member.roles:
@@ -397,9 +408,11 @@ async def apply_member_roles(
 
     else:
 
+        # 미성년 역할 지급
         if minor:
             roles_to_add.append(minor)
 
+        # 성인 역할 제거
         if adult:
 
             if adult in member.roles:
@@ -453,7 +466,6 @@ async def apply_member_roles(
 #
 # 중요:
 # 활동 여부는 이제 추방 조건이 아님.
-# 자기소개 완료 후 기록만 남겨둘 수 있게 유지.
 # =========================================================
 
 def update_activity(member):
@@ -968,13 +980,7 @@ async def check_members():
                 member.id
             )
 
-            # =================================================
-            # 중요
-            #
-            # members.json에 없는 기존 회원은 건드리지 않음.
-            # 봇이 입장 시점부터 기록한 회원만 검사.
-            # =================================================
-
+            # 기존 회원은 기록이 없으면 건드리지 않음
             if member_id not in members_data:
                 continue
 
@@ -982,14 +988,14 @@ async def check_members():
                 member_id
             ]
 
-            # 이미 자기소개 완료했다면 제외
+            # 자기소개 완료
             if data.get(
                 "intro_completed",
                 False
             ):
                 continue
 
-            # 가입 시간이 없으면 제외
+            # 가입 시간 없음
             joined_at = parse_time(
                 data.get(
                     "joined_at"
@@ -999,10 +1005,7 @@ async def check_members():
             if not joined_at:
                 continue
 
-            # =================================================
             # 30일 계산
-            # =================================================
-
             elapsed = (
                 now_utc()
                 - joined_at
@@ -1053,6 +1056,14 @@ async def on_ready():
 
     print(
         "관리자 승인 추방: ON"
+    )
+
+    print(
+        "성인 기준: 2007년생까지"
+    )
+
+    print(
+        "미성년 기준: 2008년생부터"
     )
 
     print(
@@ -1169,7 +1180,6 @@ async def on_message(
     # =====================================================
     # 자기소개
     #
-    # 중요:
     # !대화 off와 관계없이 항상 작동
     # =====================================================
 
@@ -1215,10 +1225,18 @@ async def on_message(
         # 역할 지급 성공
         if role_success:
 
+            # 성인 / 미성년 표시
+            age_type = (
+                "성인"
+                if birth_year <= ADULT_CUTOFF_YEAR
+                else "미성년"
+            )
+
             await message.reply(
                 "✅ **자기소개가 완료되었습니다!**\n\n"
                 f"🎂 출생년도: `{birth_year}`\n"
-                f"👤 성별: `{gender}`\n\n"
+                f"👤 성별: `{gender}`\n"
+                f"🔐 구분: `{age_type}`\n\n"
                 "역할 지급까지 완료됐습니다. 🎉"
             )
 
@@ -1620,6 +1638,18 @@ async def 상태(ctx):
         inline=True
     )
 
+    embed.add_field(
+        name="🔞 성인 기준",
+        value="2007년생까지",
+        inline=True
+    )
+
+    embed.add_field(
+        name="🔒 미성년 기준",
+        value="2008년생부터",
+        inline=True
+    )
+
     await ctx.send(
         embed=embed
     )
@@ -1790,6 +1820,25 @@ async def 검사(
         inline=True
     )
 
+    # 성인 / 미성년 판정 표시
+    if birth_year:
+
+        age_type = (
+            "성인"
+            if birth_year <= ADULT_CUTOFF_YEAR
+            else "미성년"
+        )
+
+    else:
+
+        age_type = "-"
+
+    embed.add_field(
+        name="🔞 구분",
+        value=age_type,
+        inline=True
+    )
+
     joined = parse_time(
         joined_at
     )
@@ -1926,9 +1975,6 @@ async def 추방로그테스트(ctx):
 #
 # 사용법:
 # !추방확인테스트 @사용자
-#
-# 실제 30일을 기다리지 않고
-# 추방 확인창을 띄움.
 # =========================================================
 
 @bot.command()
