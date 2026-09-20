@@ -59,6 +59,32 @@ MINOR_ROLE_ID = 1544031889533182043
 MEMBERS_FILE = "members.json"
 CHAT_SETTINGS_FILE = "chat_settings.json"
 
+# 야차방
+YACHA_CATEGORY_NAME = "【💬】- 채팅"
+YACHA_CHANNEL_NAME = "＃↝・야차"
+YACHA_FILE = "yacha_data.json"
+
+# 경고 시스템
+WARNINGS_FILE = "warnings.json"
+
+# 경고 1회부터 접근 제한할 채널
+# 서버에서 실제 채널명이 다르면 이 목록만 바꾸면 됩니다.
+RESTRICTED_CHANNEL_NAMES = [
+    "＃↝・19금",
+]
+
+# 경고 1회 이상 시 숨길 몸공유방 채널 ID
+BODY_SHARE_CHANNEL_ID = 1544276267522719794
+
+# 경고 단계
+# 1회: 19금/몸공유방 숨김
+# 2회: 야차방 채팅 제한
+# 3회: 1시간 타임아웃
+# 4회: 24시간 타임아웃
+# 5회: 서버 추방
+WARNING_TIMEOUT_SECONDS = 60 * 60
+WARNING_TIMEOUT_4_SECONDS = 24 * 60 * 60
+
 
 # =========================================================
 # Discord Intent
@@ -106,6 +132,22 @@ ai_cooldowns = {}
 
 # 현재 관리자 확인 대기 중인 멤버
 pending_kick_reviews = set()
+
+# 야차방 데이터
+# {
+#   "channel_id": 123,
+#   "members": [유저ID, ...]
+# }
+yacha_data = {}
+
+# 경고 데이터
+# {
+#   "유저ID": {
+#       "count": 1,
+#       "reasons": [{"reason": "...", "moderator_id": 123, "at": "..."}]
+#   }
+# }
+warnings_data = {}
 
 
 # =========================================================
@@ -170,6 +212,8 @@ def save_json(filename, data):
 def load_data():
     global members_data
     global chat_settings
+    global yacha_data
+    global warnings_data
 
     members_data = load_json(
         MEMBERS_FILE,
@@ -181,6 +225,16 @@ def load_data():
         {
             "enabled": True
         }
+    )
+
+    yacha_data = load_json(
+        YACHA_FILE,
+        {}
+    )
+
+    warnings_data = load_json(
+        WARNINGS_FILE,
+        {}
     )
 
     print(
@@ -326,6 +380,674 @@ def update_activity(member_id):
     save_json(
         MEMBERS_FILE,
         members_data
+    )
+
+
+
+# =========================================================
+# 야차방 / 경고 시스템
+# =========================================================
+
+def is_admin(member):
+    return member.guild_permissions.administrator
+
+
+def get_warning_count(member_id):
+    data = warnings_data.get(str(member_id), {})
+    try:
+        return int(data.get("count", 0))
+    except Exception:
+        return 0
+
+
+def get_yacha_channel(guild):
+    channel_id = yacha_data.get("channel_id")
+    if channel_id:
+        channel = guild.get_channel(int(channel_id))
+        if isinstance(channel, discord.TextChannel):
+            return channel
+
+    channel = discord.utils.get(
+        guild.text_channels,
+        name=YACHA_CHANNEL_NAME
+    )
+    if channel:
+        return channel
+
+    return None
+
+
+def get_yacha_members():
+    raw = yacha_data.get("members", [])
+    result = set()
+    for value in raw:
+        try:
+            result.add(int(value))
+        except Exception:
+            pass
+    return result
+
+
+def save_yacha_data():
+    save_json(YACHA_FILE, yacha_data)
+
+
+def save_warnings_data():
+    save_json(WARNINGS_FILE, warnings_data)
+
+
+async def set_restricted_channel_access(member, can_view):
+    """경고 대상의 19금/몸공유방 접근을 숨기거나 복구."""
+    changed = 0
+
+    for channel in member.guild.text_channels:
+        if (
+            channel.name not in RESTRICTED_CHANNEL_NAMES
+            and channel.id != BODY_SHARE_CHANNEL_ID
+        ):
+            continue
+
+        try:
+            if can_view:
+                await channel.set_permissions(
+                    member,
+                    overwrite=None,
+                    reason="경고 해제/초기화 - 제한 채널 접근 복구"
+                )
+            else:
+                await channel.set_permissions(
+                    member,
+                    view_channel=False,
+                    reason="경고 1회 이상 - 제한 채널 접근 차단"
+                )
+            changed += 1
+        except discord.Forbidden:
+            print(f"[채널 권한 실패] {channel.name} / {member}")
+        except Exception as e:
+            print(f"[채널 권한 오류] {channel.name} / {member}: {e}")
+
+    return changed
+
+
+async def apply_warning_restrictions(member):
+    """
+    경고 단계 적용:
+    1회 이상: 19금/몸공유방 숨김
+    2회 이상: 야차방 채팅 금지
+    3회 이상: 1시간 타임아웃
+    4회 이상: 24시간 타임아웃
+    5회 이상: 서버 추방
+    """
+    count = get_warning_count(member.id)
+
+    if count >= 1:
+        await set_restricted_channel_access(member, False)
+    else:
+        await set_restricted_channel_access(member, True)
+
+    yacha = get_yacha_channel(member.guild)
+    if yacha:
+        try:
+            if count >= 2:
+                await yacha.set_permissions(
+                    member,
+                    send_messages=False,
+                    reason="경고 2회 이상 - 야차방 채팅 제한"
+                )
+            else:
+                # 야차방 참여자로 등록되어 있을 때만 명시적으로 복구
+                if member.id in get_yacha_members():
+                    await yacha.set_permissions(
+                        member,
+                        view_channel=True,
+                        send_messages=True,
+                        reason="경고 단계 복구 - 야차방 채팅 허용"
+                    )
+        except discord.Forbidden:
+            print(f"[야차 권한 실패] {member}")
+        except Exception as e:
+            print(f"[야차 권한 오류] {member}: {e}")
+
+    if count >= 5:
+        # 5회: 서버 추방
+        try:
+            await member.kick(reason="경고 5회 누적 - 자동 서버 추방")
+        except discord.Forbidden:
+            print(f"[추방 권한 실패] {member}")
+        except Exception as e:
+            print(f"[추방 오류] {member}: {e}")
+
+    elif count >= 4:
+        # 4회: 24시간 타임아웃
+        try:
+            until = discord.utils.utcnow() + timedelta(
+                seconds=WARNING_TIMEOUT_4_SECONDS
+            )
+            await member.timeout(
+                until,
+                reason="경고 4회 - 자동 24시간 타임아웃"
+            )
+        except discord.Forbidden:
+            print(f"[타임아웃 권한 실패] {member}")
+        except Exception as e:
+            print(f"[타임아웃 오류] {member}: {e}")
+
+    elif count >= 3:
+        # 3회: 1시간 타임아웃
+        try:
+            until = discord.utils.utcnow() + timedelta(
+                seconds=WARNING_TIMEOUT_SECONDS
+            )
+            await member.timeout(
+                until,
+                reason="경고 3회 - 자동 1시간 타임아웃"
+            )
+        except discord.Forbidden:
+            print(f"[타임아웃 권한 실패] {member}")
+        except Exception as e:
+            print(f"[타임아웃 오류] {member}: {e}")
+
+
+async def restore_yacha_member_permission(member):
+    yacha = get_yacha_channel(member.guild)
+    if not yacha:
+        return
+
+    try:
+        if member.id in get_yacha_members() and get_warning_count(member.id) < 2:
+            await yacha.set_permissions(
+                member,
+                view_channel=True,
+                send_messages=True,
+                reason="야차방 참여 권한 복구"
+            )
+        else:
+            await yacha.set_permissions(
+                member,
+                overwrite=None,
+                reason="야차방 권한 초기화"
+            )
+    except Exception as e:
+        print(f"[야차 권한 복구 오류] {member}: {e}")
+
+
+async def update_yacha_permissions(guild):
+    """야차방의 현재 등록 멤버 권한을 전체적으로 다시 적용."""
+    channel = get_yacha_channel(guild)
+    if not channel:
+        return
+
+    members = get_yacha_members()
+
+    # @everyone: 보기 가능, 채팅 불가
+    try:
+        await channel.set_permissions(
+            guild.default_role,
+            view_channel=True,
+            send_messages=False,
+            add_reactions=False,
+            reason="야차방 기본 관람 권한"
+        )
+    except Exception as e:
+        print(f"[야차 @everyone 권한 오류] {e}")
+
+    # 등록된 멤버만 채팅 허용
+    for member_id in members:
+        member = guild.get_member(member_id)
+        if member is None:
+            continue
+
+        if get_warning_count(member.id) >= 2:
+            send_allowed = False
+        else:
+            send_allowed = True
+
+        try:
+            await channel.set_permissions(
+                member,
+                view_channel=True,
+                send_messages=send_allowed,
+                add_reactions=send_allowed,
+                reason="야차방 참여자 권한 적용"
+            )
+        except Exception as e:
+            print(f"[야차 참여자 권한 오류] {member}: {e}")
+
+
+async def create_yacha_channel(guild):
+    existing = get_yacha_channel(guild)
+    if existing:
+        return existing, False
+
+    category = discord.utils.find(
+        lambda c: isinstance(c, discord.CategoryChannel)
+        and c.name == YACHA_CATEGORY_NAME,
+        guild.categories
+    )
+
+    if category is None:
+        return None, None
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=False,
+            add_reactions=False
+        ),
+        guild.me: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            manage_messages=True,
+            manage_channels=True
+        )
+    }
+
+    try:
+        channel = await guild.create_text_channel(
+            YACHA_CHANNEL_NAME,
+            category=category,
+            overwrites=overwrites,
+            reason="JARVIS 야차방 생성"
+        )
+        return channel, True
+    except discord.Forbidden:
+        return None, None
+    except Exception as e:
+        print(f"[야차방 생성 오류] {e}")
+        return None, None
+
+
+async def delete_yacha_channel(guild):
+    channel = get_yacha_channel(guild)
+    if channel:
+        try:
+            await channel.delete(reason="JARVIS 야차방 삭제")
+        except Exception as e:
+            print(f"[야차방 삭제 오류] {e}")
+
+    yacha_data.clear()
+    save_yacha_data()
+
+
+# =========================================================
+# 경고 처리
+# =========================================================
+
+async def add_warning(member, moderator, reason):
+    key = str(member.id)
+
+    if key not in warnings_data:
+        warnings_data[key] = {
+            "count": 0,
+            "reasons": []
+        }
+
+    warnings_data[key]["count"] = int(
+        warnings_data[key].get("count", 0)
+    ) + 1
+
+    warnings_data[key].setdefault("reasons", []).append({
+        "reason": reason,
+        "moderator_id": moderator.id,
+        "at": utc_string(now_utc())
+    })
+
+    save_warnings_data()
+    await apply_warning_restrictions(member)
+
+    return warnings_data[key]["count"]
+
+
+async def remove_one_warning(member):
+    key = str(member.id)
+    data = warnings_data.get(key)
+
+    if not data:
+        return 0
+
+    count = max(0, int(data.get("count", 0)) - 1)
+    data["count"] = count
+
+    reasons = data.get("reasons", [])
+    if reasons:
+        reasons.pop()
+
+    if count == 0:
+        warnings_data.pop(key, None)
+
+    save_warnings_data()
+
+    await apply_warning_restrictions(member)
+    await restore_yacha_member_permission(member)
+
+    return count
+
+
+async def clear_all_warnings(member):
+    warnings_data.pop(str(member.id), None)
+    save_warnings_data()
+
+    await set_restricted_channel_access(member, True)
+    await restore_yacha_member_permission(member)
+
+
+async def send_warning_log(guild, member, moderator, count, reason):
+    channel = discord.utils.get(
+        guild.text_channels,
+        name=LOG_CHANNEL_NAME
+    )
+
+    if channel is None:
+        return
+
+    embed = discord.Embed(
+        title="⚠️ 경고 기록",
+        description=(
+            f"👤 **대상:** {member.mention}\n"
+            f"🛡️ **처리자:** {moderator.mention}\n"
+            f"📌 **사유:** {reason}\n"
+            f"⚠️ **현재 경고:** `{count}회`\n\n"
+            f"1회 이상 → 19금/몸공유방 숨김\n"
+            f"2회 이상 → 야차방 채팅 제한\n"
+            f"3회 → 1시간 타임아웃\n"
+            f"4회 → 24시간 타임아웃\n"
+            f"5회 → 서버 추방"
+        ),
+        color=discord.Color.orange()
+    )
+
+    try:
+        await channel.send(embed=embed)
+    except Exception as e:
+        print(f"[경고 로그 오류] {e}")
+
+
+# =========================================================
+# 야차방 명령어
+# =========================================================
+
+@bot.group(name="야차방", invoke_without_command=True)
+async def yacha_group(ctx):
+    await ctx.send(
+        "🔥 **야차방 사용법**\n"
+        "`!야차방 생성` - 야차방 생성 및 본인을 당사자로 등록\n"
+        "`!야차방 추가 @회원` - 채팅 가능 인원 추가\n"
+        "`!야차방 제거 @회원` - 채팅 가능 인원 제거\n"
+        "`!야차방 목록` - 현재 채팅 가능 인원 확인\n"
+        "`!야차방 삭제` - 야차방 삭제"
+    )
+
+
+@yacha_group.command(name="생성")
+async def yacha_create(ctx):
+    global yacha_data
+
+    if not ctx.guild or ctx.guild.id != GUILD_ID:
+        return
+
+    if get_warning_count(ctx.author.id) >= 2:
+        await ctx.send(
+            "🚫 경고 2회 이상이라 야차방을 사용할 수 없어요."
+        )
+        return
+
+    channel, created = await create_yacha_channel(ctx.guild)
+
+    if created is None:
+        await ctx.send(
+            f"❌ `{YACHA_CATEGORY_NAME}` 카테고리를 찾지 못했거나 "
+            "봇에게 채널 관리 권한이 없어요."
+        )
+        return
+
+    if not created:
+        await ctx.send(
+            f"ℹ️ 이미 {channel.mention} 야차방이 있어요."
+        )
+        return
+
+    yacha_data = {
+        "channel_id": channel.id,
+        "members": [ctx.author.id],
+        "created_by": ctx.author.id,
+        "created_at": utc_string(now_utc())
+    }
+    save_yacha_data()
+
+    await update_yacha_permissions(ctx.guild)
+
+    await channel.send(
+        "🔥 **야차방이 열렸어요.**\n"
+        f"👤 현재 당사자: {ctx.author.mention}\n"
+        "👀 다른 사람은 구경만 할 수 있어요.\n\n"
+        "`!야차방 추가 @회원`으로 중간에 채팅 가능한 사람을 추가할 수 있어요."
+    )
+
+    await ctx.send(
+        f"✅ {channel.mention} 생성 완료!\n"
+        f"👤 당사자: {ctx.author.mention}"
+    )
+
+
+@yacha_group.command(name="추가")
+async def yacha_add(ctx, member: discord.Member):
+    if not ctx.guild or ctx.guild.id != GUILD_ID:
+        return
+
+    if get_warning_count(ctx.author.id) >= 2:
+        await ctx.send("🚫 경고 2회 이상이라 야차방 관리를 할 수 없어요.")
+        return
+
+    channel = get_yacha_channel(ctx.guild)
+    if channel is None:
+        await ctx.send("❌ 먼저 `!야차방 생성`을 해주세요.")
+        return
+
+    members = get_yacha_members()
+
+    if not is_admin(ctx.author) and ctx.author.id not in members:
+        await ctx.send("❌ 야차방 당사자 또는 관리자만 사람을 추가할 수 있어요.")
+        return
+
+    if get_warning_count(member.id) >= 2:
+        await ctx.send("🚫 경고 2회 이상인 회원은 야차방 채팅에 추가할 수 없어요.")
+        return
+
+    if member.bot:
+        await ctx.send("❌ 봇은 야차방 참여자로 추가할 수 없어요.")
+        return
+
+    if member.id in members:
+        await ctx.send(f"ℹ️ {member.mention} 님은 이미 채팅 가능 상태예요.")
+        return
+
+    members.add(member.id)
+    yacha_data["members"] = list(members)
+    save_yacha_data()
+
+    await update_yacha_permissions(ctx.guild)
+
+    await ctx.send(
+        f"✅ {member.mention} 님을 야차방 채팅 가능 인원에 추가했어요."
+    )
+
+
+@yacha_group.command(name="제거")
+async def yacha_remove(ctx, member: discord.Member):
+    if not ctx.guild or ctx.guild.id != GUILD_ID:
+        return
+
+    channel = get_yacha_channel(ctx.guild)
+    if channel is None:
+        await ctx.send("❌ 야차방이 없어요.")
+        return
+
+    members = get_yacha_members()
+
+    if not is_admin(ctx.author) and ctx.author.id not in members:
+        await ctx.send("❌ 야차방 당사자 또는 관리자만 사람을 제거할 수 있어요.")
+        return
+
+    if member.id not in members:
+        await ctx.send(f"ℹ️ {member.mention} 님은 현재 채팅 가능 인원이 아니에요.")
+        return
+
+    members.discard(member.id)
+    yacha_data["members"] = list(members)
+    save_yacha_data()
+
+    await channel.set_permissions(
+        member,
+        overwrite=None,
+        reason="야차방 채팅 가능 인원에서 제거"
+    )
+
+    await ctx.send(
+        f"✅ {member.mention} 님을 야차방 채팅 가능 인원에서 제거했어요.\n"
+        "👀 이제 구경만 할 수 있어요."
+    )
+
+
+@yacha_group.command(name="목록")
+async def yacha_list(ctx):
+    if not ctx.guild or ctx.guild.id != GUILD_ID:
+        return
+
+    channel = get_yacha_channel(ctx.guild)
+    if channel is None:
+        await ctx.send("❌ 야차방이 없어요.")
+        return
+
+    members = get_yacha_members()
+
+    if not members:
+        text = "현재 채팅 가능한 사람이 없어요."
+    else:
+        lines = []
+        for member_id in members:
+            member = ctx.guild.get_member(member_id)
+            if member:
+                status = "🚫 경고 제한" if get_warning_count(member.id) >= 2 else "💬 채팅 가능"
+                lines.append(f"• {member.mention} — {status}")
+        text = "\n".join(lines) if lines else "현재 채팅 가능한 사람이 없어요."
+
+    await ctx.send(
+        f"🔥 **야차방 참여자 목록**\n{text}\n\n"
+        f"📍 {channel.mention}"
+    )
+
+
+@yacha_group.command(name="삭제")
+@commands.has_permissions(administrator=True)
+async def yacha_delete(ctx):
+    if not ctx.guild or ctx.guild.id != GUILD_ID:
+        return
+
+    channel = get_yacha_channel(ctx.guild)
+    if channel is None:
+        await ctx.send("❌ 삭제할 야차방이 없어요.")
+        return
+
+    await delete_yacha_channel(ctx.guild)
+    await ctx.send("🗑️ 야차방을 삭제했어요.")
+
+
+# =========================================================
+# 경고 명령어
+# =========================================================
+
+@bot.command(name="경고")
+@commands.has_permissions(administrator=True)
+async def warning_add_command(ctx, member: discord.Member, *, reason: str = "규칙 위반"):
+    if member.bot:
+        await ctx.send("❌ 봇에게는 경고를 줄 수 없어요.")
+        return
+
+    count = await add_warning(
+        member,
+        ctx.author,
+        reason
+    )
+
+    await send_warning_log(
+        ctx.guild,
+        member,
+        ctx.author,
+        count,
+        reason
+    )
+
+    if count == 1:
+        action = "🔒 19금/몸공유방 접근을 차단했어요."
+    elif count == 2:
+        action = "🔒 19금/몸공유방 + 야차방 채팅을 제한했어요."
+    elif count == 3:
+        action = "🔒 제한 유지 + 1시간 타임아웃을 적용했어요."
+    elif count == 4:
+        action = "🔒 제한 유지 + 24시간 타임아웃을 적용했어요."
+    else:
+        action = "🚪 경고 5회 누적으로 서버에서 추방했어요."
+
+    await ctx.send(
+        f"⚠️ {member.mention} 님에게 **{count}회 경고**를 부여했어요.\n"
+        f"📝 사유: `{reason}`\n"
+        f"{action}"
+    )
+
+
+@bot.command(name="경고목록")
+@commands.has_permissions(administrator=True)
+async def warning_list_command(ctx, member: discord.Member):
+    count = get_warning_count(member.id)
+    data = warnings_data.get(str(member.id), {})
+    reasons = data.get("reasons", [])
+
+    if not reasons:
+        await ctx.send(f"📋 {member.mention} 님의 경고는 **0회**예요.")
+        return
+
+    lines = []
+    for index, item in enumerate(reasons, start=1):
+        reason = item.get("reason", "사유 없음")
+        moderator_id = item.get("moderator_id")
+        moderator = ctx.guild.get_member(int(moderator_id)) if moderator_id else None
+        moderator_text = moderator.mention if moderator else "알 수 없음"
+        lines.append(f"`{index}.` {reason} — {moderator_text}")
+
+    await ctx.send(
+        f"⚠️ **{member.display_name} 경고 기록**\n"
+        f"현재 경고: **{count}회**\n\n"
+        + "\n".join(lines)
+    )
+
+
+@bot.command(name="경고취소")
+@commands.has_permissions(administrator=True)
+async def warning_remove_command(ctx, member: discord.Member):
+    old_count = get_warning_count(member.id)
+
+    if old_count <= 0:
+        await ctx.send(f"ℹ️ {member.mention} 님은 경고가 없어요.")
+        return
+
+    new_count = await remove_one_warning(member)
+
+    await ctx.send(
+        f"↩️ {member.mention} 님의 경고 1회를 취소했어요.\n"
+        f"현재 경고: **{new_count}회**"
+    )
+
+
+@bot.command(name="경고초기화")
+@commands.has_permissions(administrator=True)
+async def warning_clear_command(ctx, member: discord.Member):
+    old_count = get_warning_count(member.id)
+
+    await clear_all_warnings(member)
+
+    await ctx.send(
+        f"🧹 {member.mention} 님의 경고를 전부 초기화했어요.\n"
+        f"기존 경고: **{old_count}회 → 0회**"
     )
 
 
@@ -870,6 +1592,14 @@ async def on_ready():
 
     load_data()
 
+    # 기존 야차방이 있으면 권한 상태 복구
+    guild = bot.get_guild(GUILD_ID)
+    if guild:
+        try:
+            await update_yacha_permissions(guild)
+        except Exception as e:
+            print(f"[야차방 복구 오류] {e}")
+
     if not intro_check_loop.is_running():
         intro_check_loop.start()
 
@@ -1058,6 +1788,84 @@ async def on_message(message):
     # =====================================================
 
     await bot.process_commands(message)
+
+
+
+# =========================================================
+# 자기소개 수정 감지
+# =========================================================
+
+@bot.event
+async def on_message_edit(before, after):
+    if after.author.bot:
+        return
+
+    if after.guild is None:
+        return
+
+    if after.guild.id != GUILD_ID:
+        return
+
+    # 내용이 실제로 바뀌지 않았으면 무시
+    if before.content == after.content:
+        return
+
+    member = after.author
+    member_key = str(member.id)
+
+    # 데이터가 없으면 기존 멤버로 등록
+    if member_key not in members_data:
+        members_data[member_key] = {
+            "joined_at": utc_string(
+                member.joined_at or now_utc()
+            ),
+            "intro_completed": False,
+            "birth_year": None,
+            "gender": None,
+            "last_activity": utc_string(now_utc()),
+            "is_existing_member": True,
+            "kicked": False
+        }
+
+    update_activity(member.id)
+
+    parsed = parse_intro(after.content)
+
+    if not parsed:
+        # 잘못 수정한 경우 기존 정상 자기소개 정보는 유지
+        # 즉, 실수로 메시지를 수정했다고 바로 미작성 처리하지 않음.
+        return
+
+    birth_year, gender = parsed
+
+    members_data[member_key]["intro_completed"] = True
+    members_data[member_key]["birth_year"] = birth_year
+    members_data[member_key]["gender"] = gender
+    members_data[member_key]["intro_completed_at"] = utc_string(now_utc())
+    members_data[member_key].pop(
+        "kick_review_declined_until",
+        None
+    )
+
+    save_json(MEMBERS_FILE, members_data)
+
+    await apply_intro_roles(
+        member,
+        birth_year,
+        gender
+    )
+
+    age_type = get_age_type(birth_year)
+    gender_text = get_gender_text(gender)
+
+    try:
+        await after.channel.send(
+            f"✏️ **자기소개 수정 확인**\n"
+            f"{member.mention} 님의 수정된 자기소개를 다시 확인했어요.\n"
+            f"`{birth_year}년생` · `{gender_text}` · `{age_type}`"
+        )
+    except Exception as e:
+        print(f"[수정 감지 메시지 오류] {e}")
 
 
 # =========================================================
@@ -1654,6 +2462,71 @@ async def kick_confirm_test(
     await ctx.send(
         f"✅ {member.mention}에 대한 추방 확인창을 보냈어요."
     )
+
+
+
+# =========================================================
+# !도움말
+# =========================================================
+
+@bot.command(name="도움말", aliases=["도움"])
+async def help_command(ctx):
+    embed = discord.Embed(
+        title="🤖 JARVIS 명령어",
+        description="현재 사용할 수 있는 명령어를 정리했어요.",
+        color=discord.Color.blurple()
+    )
+
+    embed.add_field(
+        name="👤 일반",
+        value=(
+            "`!상태` — 내 자기소개/타이머 확인\n"
+            "`!도움말` — 명령어 확인"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔥 야차방",
+        value=(
+            "`!야차방 생성` — 야차방 생성\n"
+            "`!야차방 추가 @회원` — 채팅 가능 인원 추가\n"
+            "`!야차방 제거 @회원` — 채팅 가능 인원 제거\n"
+            "`!야차방 목록` — 참여자 확인\n"
+            "`!야차방 삭제` — 야차방 삭제 (관리자)"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚠️ 경고 (관리자)",
+        value=(
+            "`!경고 @회원 사유`\n"
+            "`!경고목록 @회원`\n"
+            "`!경고취소 @회원`\n"
+            "`!경고초기화 @회원`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🛡️ 관리 (관리자)",
+        value=(
+            "`!검사 @회원`\n"
+            "`!자기소개초기화 @회원`\n"
+            "`!추방로그테스트`\n"
+            "`!추방확인테스트 @회원`\n"
+            "`!대화 on/off`\n"
+            "`!기억초기화`"
+        ),
+        inline=False
+    )
+
+    embed.set_footer(
+        text="경고 단계: 1회=19금/몸공유방 차단 · 2회=야차 채팅 차단 · 3회=1시간 타임아웃"
+    )
+
+    await ctx.send(embed=embed)
 
 
 # =========================================================
