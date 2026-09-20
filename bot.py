@@ -60,7 +60,7 @@ MEMBERS_FILE = "members.json"
 CHAT_SETTINGS_FILE = "chat_settings.json"
 
 # 야차방
-YACHA_CATEGORY_NAME = "【💬】- 채팅"
+YACHA_CATEGORY_NAME = "[ 💬 ] ─ 채팅"
 YACHA_CHANNEL_NAME = "＃↝・야차"
 YACHA_FILE = "yacha_data.json"
 
