@@ -440,7 +440,7 @@ async def set_restricted_channel_access(member, can_view):
     """경고 대상의 19금/몸공유방 접근을 숨기거나 복구."""
     changed = 0
 
-    for channel in member.guild.text_channels:
+    for channel in member.guild.channels:
         if (
             channel.name not in RESTRICTED_CHANNEL_NAMES
             and channel.id != BODY_SHARE_CHANNEL_ID
