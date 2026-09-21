@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
-from openai import OpenAI
 
 # =========================================================
 # 설정
@@ -13,9 +12,6 @@ from openai import OpenAI
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
-
 GUILD_ID = 1542210983127425158
 
 LOG_CHANNEL = "🚪・추방로그"
@@ -27,10 +23,6 @@ ADULT_CUTOFF = 2007
 MIN_ALLOWED_BIRTH_YEAR = 2011  # 2012년생(중2) 이하 입장 제한
 
 ROLE_CHANNEL_ID = 1549631714769244261
-MAIN_CHAT_ID = 1544032267855470644
-
-ADULT_CHANNELS = {"＃↝・성인채팅", "＃↝・19금"}
-
 ROLES = {
     "unverified": 1544031900295893112,
     "male": 1544031878812532858,
@@ -43,7 +35,6 @@ BODY_SHARE_ID = 1544276267522719794
 
 FILES = {
     "members": "members.json",
-    "chat": "chat_settings.json",
     "yacha": "yacha_data.json",
     "warnings": "warnings.json",
 }
@@ -71,37 +62,12 @@ bot = commands.Bot(
 )
 
 # =========================================================
-# Gemini
-# =========================================================
-
-gemini = OpenAI(
-    api_key=GEMINI_KEY,
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-) if GEMINI_KEY else None
-
-SYSTEM_PROMPT = """
-너는 디스코드 서버의 AI 봇 JARVIS다.
-한국어로 친근하고 자연스럽게 답한다.
-너무 길게 답하지 않는다.
-모르는 것은 아는 척하지 않는다.
-개인정보를 요구하거나 노출하지 않는다.
-불법행위를 구체적으로 돕지 않는다.
-노골적인 성적 콘텐츠를 생성하지 않는다.
-미성년자와 관련된 성적 콘텐츠는 절대 생성하지 않는다.
-"""
-
-# =========================================================
 # 데이터
 # =========================================================
 
 members = {}
-chat_settings = {}
 yacha = {}
 warnings = {}
-history = {}
-ai_cooldowns = {}
-ai_rate_limit_until = None
-ai_request_lock = asyncio.Lock()
 pending_kicks = set()
 
 
@@ -858,112 +824,6 @@ async def intro_check():
 
 
 # =========================================================
-# AI
-# =========================================================
-
-async def ai_message(message):
-    if not gemini or not chat_settings.get("enabled", True):
-        return
-
-    content = message.content.strip()
-    if not content:
-        return
-
-    is_ai = (
-        message.channel.id == MAIN_CHAT_ID or
-        message.channel.name in ADULT_CHANNELS or
-        bot.user in message.mentions or
-        any(x in content.lower() for x in ("봇아", "자비스"))
-    )
-
-    if not is_ai:
-        return
-
-    data = members.get(str(message.author.id), {})
-
-    if message.channel.name in ADULT_CHANNELS:
-        if not data.get("intro_completed"):
-            return await message.reply("🖤 먼저 자기소개를 완료해주세요.")
-
-        if age_type(data.get("birth_year", 9999)) != "성인":
-            return await message.reply(
-                "🔒 이 채널은 성인만 이용할 수 있어요."
-            )
-
-    uid = message.author.id
-
-    if uid in ai_cooldowns:
-        if (now() - ai_cooldowns[uid]).total_seconds() < 2:
-            return
-
-    ai_cooldowns[uid] = now()
-
-    content = re.sub(
-        rf"<@!?{bot.user.id}>",
-        "",
-        content
-    ).strip() or "안녕"
-
-    cid = str(message.channel.id)
-    history.setdefault(cid, []).append({
-        "role": "user",
-        "content": content
-    })
-    history[cid] = history[cid][-12:]
-    try:
-        # Gemini 무료 티어의 분당 요청 제한을 고려해 한 번에 하나만 요청하고,
-        # 429가 나오면 서버를 스팸하지 않고 잠시 대기합니다.
-        global ai_rate_limit_until
-        if ai_rate_limit_until and now() < ai_rate_limit_until:
-            return
-
-        async with ai_request_lock:
-            for attempt in range(2):
-                try:
-                    response = await asyncio.to_thread(
-                        gemini.chat.completions.create,
-                        model=GEMINI_MODEL,
-                        messages=[
-                            {"role": "system", "content": SYSTEM_PROMPT},
-                            *history[cid]
-                        ],
-                        temperature=0.7,
-                        max_tokens=300
-                    )
-                    break
-                except Exception as e:
-                    if "429" not in str(e):
-                        raise
-                    ai_rate_limit_until = now() + timedelta(seconds=30)
-                    if attempt == 0:
-                        await asyncio.sleep(30)
-                    else:
-                        return
-
-        reply = response.choices[0].message.content.strip()
-
-        if not reply:
-            return
-
-        history[cid].append({
-            "role": "assistant",
-            "content": reply
-        })
-
-        await message.reply(
-            reply[:2000],
-            mention_author=False
-        )
-
-    except Exception as e:
-        print(f"[AI 오류] {e}")
-        await message.reply(
-            "⚠️ AI 응답 중 오류가 발생했어요.",
-            mention_author=False
-        )
-
-
-# =========================================================
 # 메시지 이벤트
 # =========================================================
 
@@ -988,9 +848,6 @@ async def on_message(message):
         if intro:
             year, gender = intro
             await intro_complete(message, year, gender)
-
-    # AI
-    await ai_message(message)
 
     await bot.process_commands(message)
 
@@ -1047,7 +904,7 @@ async def on_member_remove(member):
 @bot.event
 async def on_ready():
     print("=" * 50)
-    print(f"JARVIS 로그인 완료: {bot.user}")
+    print(f"봇 로그인 완료: {bot.user}")
     print(f"서버 ID: {GUILD_ID}")
     print("=" * 50)
 
