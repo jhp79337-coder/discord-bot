@@ -27,6 +27,10 @@ except ValueError:
     GUILD_ID = 1542210983127425158
 
 
+# =========================================================
+# 채널 설정
+# =========================================================
+
 # 로그 채널
 LOG_CHANNEL = "🚪・추방로그"
 
@@ -37,6 +41,17 @@ YACHA_NAME = "＃↝・야차"
 # 메인 채팅 채널
 MAIN_CHAT_ID = 1544032267855470644
 
+# 역할 안내 채널
+ROLE_CHANNEL_ID = 1549631714769244261
+
+# 몸공유방
+BODY_SHARE_ID = 1544276267522719794
+
+
+# =========================================================
+# 자기소개 / 연령 설정
+# =========================================================
+
 # 자기소개 제한 시간
 INTRO_MINUTES = 30
 
@@ -46,10 +61,11 @@ ADULT_CUTOFF = 2007
 # 2012년생부터 입장 제한
 MIN_ALLOWED_BIRTH_YEAR = 2011
 
-# 역할 안내 채널
-ROLE_CHANNEL_ID = 1549631714769244261
 
+# =========================================================
 # 역할 ID
+# =========================================================
+
 ROLES = {
     "unverified": 1544031900295893112,
     "male": 1544031878812532858,
@@ -57,9 +73,6 @@ ROLES = {
     "adult": 1544031894809616475,
     "minor": 1544031889533182043,
 }
-
-# 몸공유방 ID
-BODY_SHARE_ID = 1544276267522719794
 
 
 # =========================================================
@@ -74,7 +87,10 @@ FILES = {
 }
 
 
+# =========================================================
 # 경고별 타임아웃
+# =========================================================
+
 WARNING_TIMEOUT = {
     3: 60 * 60,
     4: 24 * 60 * 60,
@@ -133,6 +149,7 @@ def load_json(file, default):
             "r",
             encoding="utf-8"
         ) as f:
+
             return json.load(f)
 
     except (
@@ -155,6 +172,7 @@ def save_json(file, data):
     """
 
     try:
+
         tmp = file + ".tmp"
 
         with open(
@@ -239,16 +257,21 @@ def iso(dt):
 
 
 def parse_dt(value):
+
     if not value:
         return None
 
     try:
-        return datetime.fromisoformat(value)
+
+        return datetime.fromisoformat(
+            value
+        )
 
     except (
         ValueError,
         TypeError
     ):
+
         return None
 
 
@@ -275,12 +298,14 @@ def member_data(member):
 
 
 def warning_count(member):
+
     data = warnings.get(
         str(member.id),
         {}
     )
 
     try:
+
         return int(
             data.get(
                 "count",
@@ -292,6 +317,7 @@ def warning_count(member):
         ValueError,
         TypeError
     ):
+
         return 0
 
 
@@ -300,6 +326,7 @@ def is_admin(member):
 
 
 def age_type(year):
+
     return (
         "성인"
         if year <= ADULT_CUTOFF
@@ -308,6 +335,7 @@ def age_type(year):
 
 
 def gender_text(gender):
+
     return {
         "남": "남자",
         "여": "여자"
@@ -347,9 +375,11 @@ def parse_intro(text):
     current = datetime.now().year
 
     if len(raw) == 4:
+
         year = int(raw)
 
     else:
+
         n = int(raw)
 
         year = (
@@ -374,6 +404,7 @@ async def role(
     role_id,
     add=True
 ):
+
     role_obj = member.guild.get_role(
         role_id
     )
@@ -392,6 +423,7 @@ async def role(
         if add:
 
             if role_obj not in member.roles:
+
                 await member.add_roles(
                     role_obj
                 )
@@ -399,6 +431,7 @@ async def role(
         else:
 
             if role_obj in member.roles:
+
                 await member.remove_roles(
                     role_obj
                 )
@@ -429,6 +462,7 @@ async def apply_intro_roles(
     year,
     gender
 ):
+
     # 기존 역할 제거
     for key in (
         "unverified",
@@ -452,7 +486,7 @@ async def apply_intro_roles(
         else ROLES["female"]
     )
 
-    # 성인/미성년 역할
+    # 성인 / 미성년 역할
     await role(
         member,
         ROLES["adult"]
@@ -597,6 +631,7 @@ async def intro_complete(
 # =========================================================
 
 def yacha_channel(guild):
+
     cid = yacha.get(
         "channel_id"
     )
@@ -613,12 +648,14 @@ def yacha_channel(guild):
                 channel,
                 discord.TextChannel
             ):
+
                 return channel
 
         except (
             ValueError,
             TypeError
         ):
+
             pass
 
     return discord.utils.get(
@@ -628,6 +665,7 @@ def yacha_channel(guild):
 
 
 def yacha_members():
+
     raw_members = yacha.get(
         "members",
         []
@@ -638,6 +676,7 @@ def yacha_members():
     for x in raw_members:
 
         try:
+
             result.add(
                 int(x)
             )
@@ -646,12 +685,14 @@ def yacha_members():
             ValueError,
             TypeError
         ):
+
             continue
 
     return result
 
 
 async def update_yacha(guild):
+
     channel = yacha_channel(
         guild
     )
@@ -714,6 +755,7 @@ async def update_yacha(guild):
 
 
 async def create_yacha(guild):
+
     old = yacha_channel(
         guild
     )
@@ -778,11 +820,17 @@ async def create_yacha(guild):
 async def yacha_cmd(ctx):
 
     await ctx.send(
+        "🔥 **야차방 명령어**\n\n"
         "`!야차방 생성`\n"
+        "└ 야차방 생성\n\n"
         "`!야차방 추가 @회원`\n"
+        "└ 회원 추가\n\n"
         "`!야차방 제거 @회원`\n"
+        "└ 회원 제거\n\n"
         "`!야차방 목록`\n"
-        "`!야차방 삭제`"
+        "└ 참여자 확인\n\n"
+        "`!야차방 삭제`\n"
+        "└ 야차방 삭제"
     )
 
 
@@ -1086,6 +1134,7 @@ async def restricted_access(
             channel.name != "＃↝・19금"
             and channel.id != BODY_SHARE_ID
         ):
+
             continue
 
         try:
@@ -1115,7 +1164,7 @@ async def apply_warning(member):
         member
     )
 
-    # 경고 1회부터 19금/몸공유방 제한
+    # 경고 1회부터 19금 / 몸공유방 제한
     await restricted_access(
         member,
         count == 0
@@ -1354,6 +1403,7 @@ async def warning_remove(
         data["reasons"].pop()
 
     if data["count"] <= 0:
+
         warnings.pop(
             key,
             None
@@ -1384,6 +1434,7 @@ async def warning_remove(
         if channel:
 
             try:
+
                 await channel.set_permissions(
                     member,
                     overwrite=None
@@ -1473,6 +1524,7 @@ class KickView(
         guild_id,
         member_id
     ):
+
         super().__init__(
             timeout=None
         )
@@ -1827,15 +1879,11 @@ async def on_member_join(
 
     # 새로 들어온 회원은 30분 자기소개 확인 대상
     members[str(member.id)] = {
-        "joined_at": iso(
-            now()
-        ),
+        "joined_at": iso(now()),
         "intro_completed": False,
         "birth_year": None,
         "gender": None,
-        "last_activity": iso(
-            now()
-        ),
+        "last_activity": iso(now()),
         "is_existing_member": False,
         "kicked": False
     }
@@ -1853,8 +1901,76 @@ async def on_member_join(
     )
 
     print(
-        f"[입장] {member} "
-        f"({member.id})"
+        f"[입장] {member} ({member.id})"
+    )
+
+
+# =========================================================
+# 도움말
+# =========================================================
+
+@bot.command(
+    name="도움말",
+    aliases=["도움", "명령어", "help"]
+)
+async def help_command(ctx):
+
+    embed = discord.Embed(
+        title="🖤 서버 봇 도움말",
+        description=(
+            "필요한 명령어만 간단하게 정리했어요.\n"
+            "명령어 앞에 `!`를 붙여 사용하세요."
+        ),
+        color=discord.Color.from_rgb(
+            255,
+            105,
+            180
+        )
+    )
+
+    # 일반 명령어
+    embed.add_field(
+        name="💬 기본",
+        value=(
+            "`!도움말` — 명령어 보기\n"
+            "`!야차방` — 야차방 메뉴 보기"
+        ),
+        inline=False
+    )
+
+    # 야차방
+    embed.add_field(
+        name="🔥 야차방",
+        value=(
+            "`!야차방 생성` — 야차방 생성\n"
+            "`!야차방 추가 @회원` — 회원 추가\n"
+            "`!야차방 제거 @회원` — 회원 제거\n"
+            "`!야차방 목록` — 참여자 확인\n"
+            "`!야차방 삭제` — 야차방 삭제"
+        ),
+        inline=False
+    )
+
+    # 관리자
+    if is_admin(ctx.author):
+
+        embed.add_field(
+            name="🛡️ 관리자",
+            value=(
+                "`!경고 @회원 사유` — 경고 부여\n"
+                "`!경고목록 @회원` — 경고 확인\n"
+                "`!경고취소 @회원` — 경고 1회 취소\n"
+                "`!경고초기화 @회원` — 경고 전체 초기화"
+            ),
+            inline=False
+        )
+
+    embed.set_footer(
+        text="♡ 서버 이용에 필요한 명령어만 표시됩니다."
+    )
+
+    await ctx.send(
+        embed=embed
     )
 
 
@@ -1918,15 +2034,19 @@ async def on_message(
 async def on_ready():
 
     print("=" * 50)
+
     print(
         f"🤖 로그인 완료: {bot.user}"
     )
+
     print(
         f"🆔 봇 ID: {bot.user.id}"
     )
+
     print(
         f"🏠 서버 ID: {GUILD_ID}"
     )
+
     print("=" * 50)
 
     # 데이터가 아직 로드되지 않았으면 로드
@@ -1941,16 +2061,20 @@ async def on_ready():
     if guild:
 
         try:
+
             await update_yacha(
                 guild
             )
+
         except Exception as e:
+
             print(
                 f"[야차 동기화 오류] {e}"
             )
 
     # 자기소개 검사 시작
     if not intro_check.is_running():
+
         intro_check.start()
 
 
@@ -1985,7 +2109,8 @@ async def on_command_error(
     ):
 
         return await ctx.send(
-            "❌ 필요한 인자가 빠졌어요."
+            "❌ 필요한 인자가 빠졌어요.\n"
+            "`!도움말`에서 사용법을 확인해주세요."
         )
 
     if isinstance(
@@ -1995,6 +2120,16 @@ async def on_command_error(
 
         return await ctx.send(
             "❌ 해당 회원을 찾지 못했어요."
+        )
+
+    if isinstance(
+        error,
+        commands.BadArgument
+    ):
+
+        return await ctx.send(
+            "❌ 명령어 사용법이 올바르지 않아요.\n"
+            "`!도움말`에서 사용법을 확인해주세요."
         )
 
     print(
