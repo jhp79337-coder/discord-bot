@@ -100,6 +100,8 @@ yacha = {}
 warnings = {}
 history = {}
 ai_cooldowns = {}
+ai_rate_limit_until = None
+ai_request_lock = asyncio.Lock()
 pending_kicks = set()
 
 
@@ -909,16 +911,34 @@ async def ai_message(message):
     })
     history[cid] = history[cid][-12:]
     try:
-        response = await asyncio.to_thread(
-            gemini.chat.completions.create,
-            model=GEMINI_MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                *history[cid]
-            ],
-            temperature=0.7,
-            max_tokens=500
-        )
+        # Gemini 무료 티어의 분당 요청 제한을 고려해 한 번에 하나만 요청하고,
+        # 429가 나오면 서버를 스팸하지 않고 잠시 대기합니다.
+        global ai_rate_limit_until
+        if ai_rate_limit_until and now() < ai_rate_limit_until:
+            return
+
+        async with ai_request_lock:
+            for attempt in range(2):
+                try:
+                    response = await asyncio.to_thread(
+                        gemini.chat.completions.create,
+                        model=GEMINI_MODEL,
+                        messages=[
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            *history[cid]
+                        ],
+                        temperature=0.7,
+                        max_tokens=300
+                    )
+                    break
+                except Exception as e:
+                    if "429" not in str(e):
+                        raise
+                    ai_rate_limit_until = now() + timedelta(seconds=30)
+                    if attempt == 0:
+                        await asyncio.sleep(30)
+                    else:
+                        return
 
         reply = response.choices[0].message.content.strip()
 
