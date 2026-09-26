@@ -62,7 +62,7 @@ INTRO_MINUTES = 30
 ADULT_CUTOFF = 2007
 
 # 2012년생부터 제한
-MIN_ALLOWED_BIRTH_YEAR = 2011
+MIN_ALLOWED_BIRTH_YEAR = 2012
 
 
 # =========================================================
