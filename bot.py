@@ -703,7 +703,7 @@ async def intro_complete(
     # 연령 제한
     # =====================================================
 
-    if year > MIN_ALLOWED_BIRTH_YEAR:
+    if year >= MIN_ALLOWED_BIRTH_YEAR:
 
         try:
 
