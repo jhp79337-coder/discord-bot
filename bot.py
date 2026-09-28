@@ -1,17 +1,17 @@
 # =========================================================
 # Discord Server Management Bot
-# Profile + Matching Version
+# bot.py
 # =========================================================
 
 import os
 import json
 import re
-import random
 
 from datetime import datetime, timedelta, timezone
 
 import discord
 from discord.ext import commands, tasks
+
 from dotenv import load_dotenv
 
 
@@ -24,13 +24,16 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 try:
+
     GUILD_ID = int(
         os.getenv(
             "GUILD_ID",
             "1553419235701690428"
         )
     )
+
 except ValueError:
+
     GUILD_ID = 1553419235701690428
 
 
@@ -68,15 +71,20 @@ MIN_ALLOWED_BIRTH_YEAR = 2012
 
 ROLES = {
 
-    "unverified": 1553440335751938118,
+    "unverified":
+        1553440335751938118,
 
-    "male": 1553434350916206592,
+    "male":
+        1553434350916206592,
 
-    "female": 1553434497213538304,
+    "female":
+        1553434497213538304,
 
-    "adult": 1553440075830919238,
+    "adult":
+        1553440075830919238,
 
-    "minor": 1553438682298589284
+    "minor":
+        1553438682298589284
 
 }
 
@@ -87,15 +95,17 @@ ROLES = {
 
 FILES = {
 
-    "members": "members.json",
+    "members":
+        "members.json",
 
-    "warnings": "warnings.json",
+    "warnings":
+        "warnings.json",
 
-    "chat": "chat.json",
+    "profiles":
+        "profiles.json",
 
-    "profiles": "profiles.json",
-
-    "matches": "matches.json"
+    "exceptions":
+        "intro_exceptions.json"
 
 }
 
@@ -106,9 +116,11 @@ FILES = {
 
 WARNING_TIMEOUT = {
 
-    3: 60 * 60,
+    3:
+        60 * 60,
 
-    4: 24 * 60 * 60
+    4:
+        24 * 60 * 60
 
 }
 
@@ -149,24 +161,18 @@ members = {}
 
 warnings = {}
 
-chat_settings = {}
-
 profiles = {}
 
-matches = {}
-
+intro_exceptions = set()
 
 pending_kicks = set()
 
 
 # =========================================================
-# JSON 관리
+# JSON
 # =========================================================
 
-def load_json(
-    filename,
-    default
-):
+def load_json(filename, default):
 
     try:
 
@@ -174,77 +180,53 @@ def load_json(
 
             return default
 
-
         with open(
-
             filename,
-
             "r",
-
             encoding="utf-8"
-
         ) as f:
 
             return json.load(f)
 
-
     except Exception as e:
 
         print(
-            f"[JSON LOAD ERROR] {filename}: {e}"
+            f"[JSON LOAD ERROR] "
+            f"{filename}: {e}"
         )
 
         return default
 
 
-def save_json(
-    filename,
-    data
-):
+def save_json(filename, data):
 
     try:
 
         temp = filename + ".tmp"
 
-
         with open(
-
             temp,
-
             "w",
-
             encoding="utf-8"
-
         ) as f:
 
             json.dump(
-
                 data,
-
                 f,
-
                 ensure_ascii=False,
-
                 indent=2
-
             )
 
-
         os.replace(
-
             temp,
-
             filename
-
         )
-
 
     except Exception as e:
 
         print(
-
-            f"[JSON SAVE ERROR] {filename}: {e}"
-
+            f"[JSON SAVE ERROR] "
+            f"{filename}: {e}"
         )
 
 
@@ -252,82 +234,70 @@ def load_data():
 
     global members
     global warnings
-    global chat_settings
     global profiles
-    global matches
-
+    global intro_exceptions
 
     members = load_json(
-
         FILES["members"],
-
         {}
-
     )
-
 
     warnings = load_json(
-
         FILES["warnings"],
-
         {}
-
     )
-
-
-    chat_settings = load_json(
-
-        FILES["chat"],
-
-        {
-            "enabled": True
-        }
-
-    )
-
 
     profiles = load_json(
-
         FILES["profiles"],
-
         {}
-
     )
 
-
-    matches = load_json(
-
-        FILES["matches"],
-
-        {}
-
-
+    exception_data = load_json(
+        FILES["exceptions"],
+        []
     )
 
+    intro_exceptions = set()
+
+    for value in exception_data:
+
+        try:
+
+            intro_exceptions.add(
+                int(value)
+            )
+
+        except Exception:
+
+            pass
 
     print("=" * 50)
 
     print(
-        f"[DATA] members  : {len(members)}"
+        f"[DATA] members : "
+        f"{len(members)}"
     )
 
     print(
-        f"[DATA] warnings : {len(warnings)}"
+        f"[DATA] warnings : "
+        f"{len(warnings)}"
     )
 
     print(
-        f"[DATA] profiles : {len(profiles)}"
+        f"[DATA] profiles : "
+        f"{len(profiles)}"
     )
 
     print(
-        f"[DATA] matches  : {len(matches)}"
+        f"[DATA] exceptions : "
+        f"{len(intro_exceptions)}"
     )
 
     print("=" * 50)
 
 
 # =========================================================
-# 공통 함수
+# 공통
 # =========================================================
 
 def now():
@@ -347,7 +317,6 @@ def parse_dt(value):
     if not value:
 
         return None
-
 
     try:
 
@@ -378,16 +347,15 @@ def gender_text(gender):
 
     return {
 
-        "남": "남자",
+        "남":
+            "남자",
 
-        "여": "여자"
+        "여":
+            "여자"
 
     }.get(
-
         gender,
-
         "미확인"
-
     )
 
 
@@ -401,14 +369,14 @@ def member_data(member):
         member.id
     )
 
-
     if member_id not in members:
 
         members[member_id] = {
 
             "joined_at":
                 iso(
-                    member.joined_at or now()
+                    member.joined_at
+                    or now()
                 ),
 
             "intro_completed":
@@ -431,9 +399,12 @@ def member_data(member):
 
         }
 
-
     return members[member_id]
 
+
+# =========================================================
+# 경고 개수
+# =========================================================
 
 def warning_count(member):
 
@@ -445,21 +416,14 @@ def warning_count(member):
 
     )
 
-
     try:
 
         return int(
-
             data.get(
-
                 "count",
-
                 0
-
             )
-
         )
-
 
     except Exception:
 
@@ -473,22 +437,15 @@ def warning_count(member):
 def get_log_channel(guild):
 
     channel = guild.get_channel(
-
         LOG_CHANNEL_ID
-
     )
 
-
     if isinstance(
-
         channel,
-
         discord.TextChannel
-
     ):
 
         return channel
-
 
     return None
 
@@ -498,32 +455,23 @@ def get_log_channel(guild):
 # =========================================================
 
 async def manage_role(
-
     member,
-
     role_id,
-
     add=True
-
 ):
 
     role_obj = member.guild.get_role(
-
         role_id
-
     )
-
 
     if not role_obj:
 
         print(
-
-            f"[ROLE ERROR] 역할 없음: {role_id}"
-
+            f"[ROLE ERROR] "
+            f"역할 없음: {role_id}"
         )
 
         return
-
 
     try:
 
@@ -532,9 +480,7 @@ async def manage_role(
             if role_obj not in member.roles:
 
                 await member.add_roles(
-
                     role_obj
-
                 )
 
         else:
@@ -542,87 +488,127 @@ async def manage_role(
             if role_obj in member.roles:
 
                 await member.remove_roles(
-
                     role_obj
-
                 )
-
 
     except Exception as e:
 
         print(
-
             f"[ROLE ERROR] {e}"
-
         )
 
 
 # =========================================================
 # 자기소개 파싱
+#
+# 1900~1999
+# -> 1900 남
+# -> 1999 여
+#
+# 2000년대
+# -> 00 남
+# -> 04 ㅇ
+# -> 04 ㄴ
+# -> 04 여
+#
+# 2012년생부터 추방
 # =========================================================
 
 def parse_intro(text):
 
     text = text.strip()
 
+    # -----------------------------------------------------
+    # 4자리 연도
+    # -----------------------------------------------------
 
     match = re.search(
 
         r"(?<!\d)"
-        r"(19\d{2}|20\d{2}|\d{2})"
-        r"\s*(?:년생|년)?"
+        r"(19\d{2}|20\d{2})"
         r"\s*"
-        r"(남자|여자|남|여|ㄴ|ㅇ)"
+        r"(남|여|ㄴ|ㅇ)"
         r"(?!\S)",
 
         text
 
     )
 
+    if match:
 
-    if not match:
+        raw_year = match.group(1)
 
-        return None
+        gender = match.group(2)
 
-
-    raw_year, raw_gender = match.groups()
-
-    current_year = datetime.now().year
-
-
-    # 4자리
-
-    if len(raw_year) == 4:
-
-        year = int(raw_year)
-
-
-    # 2자리
-    # 무조건 2000년대로 처리
+        year = int(
+            raw_year
+        )
 
     else:
 
-        year = 2000 + int(raw_year)
+        # -------------------------------------------------
+        # 2자리 연도
+        # 2000년대만 허용
+        # -------------------------------------------------
 
+        match = re.search(
+
+            r"(?<!\d)"
+            r"(\d{2})"
+            r"\s*"
+            r"(남|여|ㄴ|ㅇ)"
+            r"(?!\S)",
+
+            text
+
+        )
+
+        if not match:
+
+            return None
+
+        raw_year = match.group(1)
+
+        gender = match.group(2)
+
+        short_year = int(
+            raw_year
+        )
+
+        current_year = datetime.now().year
+
+        current_short = current_year % 100
+
+        # 미래 연도 방지
+        if short_year > current_short:
+
+            return None
+
+        year = 2000 + short_year
+
+
+    # -----------------------------------------------------
+    # 연도 검증
+    # -----------------------------------------------------
+
+    current_year = datetime.now().year
 
     if year < 1900:
 
         return None
-
 
     if year > current_year:
 
         return None
 
 
-    if raw_gender in (
+    # -----------------------------------------------------
+    # 성별
+    # -----------------------------------------------------
 
-        "남자",
-
+    if gender in (
         "남",
-
         "ㄴ"
-
     ):
 
         gender = "남"
@@ -632,7 +618,10 @@ def parse_intro(text):
         gender = "여"
 
 
-    return year, gender
+    return (
+        year,
+        gender
+    )
 
 
 # =========================================================
@@ -640,25 +629,19 @@ def parse_intro(text):
 # =========================================================
 
 async def apply_intro_roles(
-
     member,
-
     year,
-
     gender
-
 ):
+
+    # 기존 역할 제거
 
     for key in (
 
         "unverified",
-
         "male",
-
         "female",
-
         "adult",
-
         "minor"
 
     ):
@@ -673,6 +656,8 @@ async def apply_intro_roles(
 
         )
 
+
+    # 성별
 
     if gender == "남":
 
@@ -698,6 +683,8 @@ async def apply_intro_roles(
 
         )
 
+
+    # 나이
 
     if age_type(year) == "성인":
 
@@ -729,32 +716,25 @@ async def apply_intro_roles(
 # =========================================================
 
 async def intro_complete(
-
     message,
-
     year,
-
     gender
-
 ):
 
     member = message.author
 
 
-    # =====================================================
+    # -----------------------------------------------------
     # 연령 제한
-    # =====================================================
+    # -----------------------------------------------------
 
     if year >= MIN_ALLOWED_BIRTH_YEAR:
 
         try:
 
             log = get_log_channel(
-
                 message.guild
-
             )
-
 
             if log:
 
@@ -767,22 +747,18 @@ async def intro_complete(
 
                 )
 
-
             await member.kick(
 
-                reason="연령 제한"
+                reason=
+                "연령 제한"
 
             )
 
-
             data = member_data(
-
                 member
-
             )
 
             data["kicked"] = True
-
 
             save_json(
 
@@ -792,31 +768,24 @@ async def intro_complete(
 
             )
 
-
             return
-
 
         except Exception as e:
 
             print(
-
                 f"[AGE KICK ERROR] {e}"
-
             )
 
             return
 
 
-    # =====================================================
-    # 데이터 저장
-    # =====================================================
+    # -----------------------------------------------------
+    # 회원 데이터
+    # -----------------------------------------------------
 
     data = member_data(
-
         member
-
     )
-
 
     data.update({
 
@@ -837,7 +806,6 @@ async def intro_complete(
 
     })
 
-
     save_json(
 
         FILES["members"],
@@ -846,13 +814,14 @@ async def intro_complete(
 
     )
 
-
     pending_kicks.discard(
-
         member.id
-
     )
 
+
+    # -----------------------------------------------------
+    # 역할
+    # -----------------------------------------------------
 
     await apply_intro_roles(
 
@@ -864,6 +833,10 @@ async def intro_complete(
 
     )
 
+
+    # -----------------------------------------------------
+    # 안내
+    # -----------------------------------------------------
 
     await message.channel.send(
 
@@ -878,10 +851,7 @@ async def intro_complete(
         f"에서 역할을 골라주세요.\n"
 
         f"💬 <#{MAIN_CHAT_ID}> "
-        f"에서 편하게 놀아요!\n\n"
-
-        f"💗 프로필은 `/프로필 편집`으로 "
-        f"설정할 수 있어요."
+        f"에서 편하게 놀아요!"
 
     )
 
@@ -895,32 +865,23 @@ class KickView(
 ):
 
     def __init__(
-
         self,
-
         member
-
     ):
 
         super().__init__(
-
             timeout=300
-
         )
 
         self.member = member
 
 
     async def on_timeout(
-
         self
-
     ):
 
         pending_kicks.discard(
-
             self.member.id
-
         )
 
 
@@ -928,17 +889,19 @@ class KickView(
 
         label="예, 추방하기",
 
-        style=discord.ButtonStyle.danger
+        style=
+        discord.ButtonStyle.danger
 
     )
-
     async def confirm(
 
         self,
 
-        interaction: discord.Interaction,
+        interaction:
+        discord.Interaction,
 
-        button: discord.ui.Button
+        button:
+        discord.ui.Button
 
     ):
 
@@ -977,9 +940,7 @@ class KickView(
 
 
         data = member_data(
-
             member
-
         )
 
 
@@ -992,11 +953,8 @@ class KickView(
         ):
 
             pending_kicks.discard(
-
                 member.id
-
             )
-
 
             await interaction.response.edit_message(
 
@@ -1015,13 +973,12 @@ class KickView(
 
             await member.kick(
 
-                reason="자기소개 미작성"
+                reason=
+                "자기소개 미작성"
 
             )
 
-
             data["kicked"] = True
-
 
             save_json(
 
@@ -1031,13 +988,9 @@ class KickView(
 
             )
 
-
             pending_kicks.discard(
-
                 member.id
-
             )
-
 
             await interaction.response.edit_message(
 
@@ -1049,15 +1002,11 @@ class KickView(
 
             )
 
-
         except Exception as e:
 
             print(
-
                 f"[KICK ERROR] {e}"
-
             )
-
 
             await interaction.response.send_message(
 
@@ -1072,17 +1021,19 @@ class KickView(
 
         label="취소",
 
-        style=discord.ButtonStyle.secondary
+        style=
+        discord.ButtonStyle.secondary
 
     )
-
     async def cancel(
 
         self,
 
-        interaction: discord.Interaction,
+        interaction:
+        discord.Interaction,
 
-        button: discord.ui.Button
+        button:
+        discord.ui.Button
 
     ):
 
@@ -1100,11 +1051,8 @@ class KickView(
 
 
         pending_kicks.discard(
-
             self.member.id
-
         )
-
 
         await interaction.response.edit_message(
 
@@ -1118,16 +1066,22 @@ class KickView(
 
 
 # =========================================================
-# 추방 확인 메시지
+# 추방 확인
 # =========================================================
 
 async def send_kick_review(
-
     guild,
-
     member
-
 ):
+
+    # 자기소개 제외 회원
+
+    if member.id in intro_exceptions:
+
+        return
+
+
+    # 이미 대기 중
 
     if member.id in pending_kicks:
 
@@ -1135,27 +1089,20 @@ async def send_kick_review(
 
 
     data = member_data(
-
         member
-
     )
 
 
     if data.get(
-
         "intro_completed",
-
         False
-
     ):
 
         return
 
 
     log = get_log_channel(
-
         guild
-
     )
 
 
@@ -1165,9 +1112,7 @@ async def send_kick_review(
 
 
     pending_kicks.add(
-
         member.id
-
     )
 
 
@@ -1178,7 +1123,9 @@ async def send_kick_review(
             f"⚠️ **자기소개 미작성 확인**\n\n"
 
             f"회원: {member.mention}\n"
-            f"입장 후 `{INTRO_MINUTES}분` 경과\n\n"
+
+            f"입장 후 "
+            f"`{INTRO_MINUTES}분` 경과\n\n"
 
             f"추방 여부를 선택해주세요.",
 
@@ -1186,19 +1133,14 @@ async def send_kick_review(
 
         )
 
-
     except Exception as e:
 
         pending_kicks.discard(
-
             member.id
-
         )
 
         print(
-
             f"[KICK REVIEW ERROR] {e}"
-
         )
 
 
@@ -1207,19 +1149,13 @@ async def send_kick_review(
 # =========================================================
 
 @tasks.loop(
-
     minutes=1
-
 )
-
 async def intro_check():
 
     guild = bot.get_guild(
-
         GUILD_ID
-
     )
-
 
     if not guild:
 
@@ -1236,30 +1172,31 @@ async def intro_check():
             continue
 
 
+        # 제외 회원
+
+        if member.id in intro_exceptions:
+
+            continue
+
+
         data = member_data(
-
             member
-
         )
 
 
         if data.get(
-
             "intro_completed",
-
             False
-
         ):
 
             continue
 
 
+        # 기존 회원 제외
+
         if data.get(
-
             "is_existing_member",
-
             True
-
         ):
 
             continue
@@ -1268,9 +1205,7 @@ async def intro_check():
         joined = parse_dt(
 
             data.get(
-
                 "joined_at"
-
             )
 
         )
@@ -1307,11 +1242,8 @@ async def intro_check():
 # =========================================================
 
 @bot.event
-
 async def on_member_join(
-
     member
-
 ):
 
     if member.guild.id != GUILD_ID:
@@ -1327,31 +1259,24 @@ async def on_member_join(
     members[str(member.id)] = {
 
         "joined_at":
-
             iso(now()),
 
         "intro_completed":
-
             False,
 
         "birth_year":
-
             None,
 
         "gender":
-
             None,
 
         "last_activity":
-
             iso(now()),
 
         "is_existing_member":
-
             False,
 
         "kicked":
-
             False
 
     }
@@ -1378,8 +1303,595 @@ async def on_member_join(
 
 
     print(
-
         f"[JOIN] {member}"
+    )
+
+
+# =========================================================
+# 프로필
+# =========================================================
+
+def get_profile(
+    user_id
+):
+
+    uid = str(
+        user_id
+    )
+
+
+    if uid not in profiles:
+
+        profiles[uid] = {
+
+            "age":
+                None,
+
+            "location":
+                None,
+
+            "gender":
+                None,
+
+            "ideal_type":
+                None,
+
+            "likes":
+                None
+
+        }
+
+
+    return profiles[uid]
+
+
+# =========================================================
+# 프로필 편집 Modal
+# =========================================================
+
+class ProfileModal(
+    discord.ui.Modal,
+    title="프로필 편집"
+):
+
+    age = discord.ui.TextInput(
+
+        label="나이",
+
+        placeholder="예: 04",
+
+        required=False,
+
+        max_length=10
+
+    )
+
+
+    location = discord.ui.TextInput(
+
+        label="사는 곳",
+
+        placeholder="예: 서울",
+
+        required=False,
+
+        max_length=50
+
+    )
+
+
+    gender = discord.ui.TextInput(
+
+        label="성별",
+
+        placeholder="예: 남 / 여",
+
+        required=False,
+
+        max_length=10
+
+    )
+
+
+    ideal_type = discord.ui.TextInput(
+
+        label="이상형",
+
+        placeholder="예: 웃는 게 예쁜 사람",
+
+        required=False,
+
+        max_length=200
+
+    )
+
+
+    likes = discord.ui.TextInput(
+
+        label="좋아하는 것",
+
+        placeholder="예: 게임, 음악, 영화",
+
+        required=False,
+
+        max_length=200
+
+    )
+
+
+    async def on_submit(
+        self,
+        interaction:
+        discord.Interaction
+    ):
+
+        uid = str(
+            interaction.user.id
+        )
+
+
+        profiles[uid] = {
+
+            "age":
+                self.age.value.strip()
+                or None,
+
+            "location":
+                self.location.value.strip()
+                or None,
+
+            "gender":
+                self.gender.value.strip()
+                or None,
+
+            "ideal_type":
+                self.ideal_type.value.strip()
+                or None,
+
+            "likes":
+                self.likes.value.strip()
+                or None
+
+        }
+
+
+        save_json(
+
+            FILES["profiles"],
+
+            profiles
+
+        )
+
+
+        await interaction.response.send_message(
+
+            "✅ 프로필을 저장했어요!\n"
+            "이제 `!프로필`로 확인할 수 있어요.",
+
+            ephemeral=True
+
+        )
+
+
+# =========================================================
+# !프로필
+# =========================================================
+
+@bot.command(
+    name="프로필"
+)
+async def profile_command(
+    ctx
+):
+
+    profile = get_profile(
+        ctx.author.id
+    )
+
+
+    member_info = members.get(
+
+        str(ctx.author.id),
+
+        {}
+
+    )
+
+
+    embed = discord.Embed(
+
+        title="👤 프로필",
+
+        color=
+        discord.Color.blurple()
+
+    )
+
+
+    embed.set_thumbnail(
+
+        url=
+        ctx.author.display_avatar.url
+
+    )
+
+
+    embed.add_field(
+
+        name="나이",
+
+        value=(
+
+            profile.get("age")
+
+            or
+
+            member_info.get(
+                "birth_year"
+            )
+
+            or
+
+            "미설정"
+
+        ),
+
+        inline=True
+
+    )
+
+
+    embed.add_field(
+
+        name="사는 곳",
+
+        value=
+
+        profile.get(
+            "location"
+        )
+        or
+        "미설정",
+
+        inline=True
+
+    )
+
+
+    embed.add_field(
+
+        name="성별",
+
+        value=(
+
+            profile.get("gender")
+
+            or
+
+            gender_text(
+
+                member_info.get(
+                    "gender"
+                )
+
+            )
+
+        ),
+
+        inline=True
+
+    )
+
+
+    embed.add_field(
+
+        name="이상형",
+
+        value=
+
+        profile.get(
+            "ideal_type"
+        )
+        or
+        "미설정",
+
+        inline=False
+
+    )
+
+
+    embed.add_field(
+
+        name="좋아하는 것",
+
+        value=
+
+        profile.get(
+            "likes"
+        )
+        or
+        "미설정",
+
+        inline=False
+
+    )
+
+
+    embed.set_footer(
+
+        text=
+        "!프로필편집 으로 수정"
+
+    )
+
+
+    await ctx.send(
+        embed=embed
+    )
+
+
+# =========================================================
+# !프로필편집
+# =========================================================
+
+@bot.command(
+    name="프로필편집"
+)
+async def profile_edit_command(
+    ctx
+):
+
+    await ctx.author.send(
+        "프로필 편집창을 열어드릴게요."
+    )
+
+    try:
+
+        await ctx.send(
+            f"{ctx.author.mention} 📩 DM을 확인해주세요!",
+            delete_after=5
+        )
+
+    except Exception:
+
+        pass
+
+
+    # -----------------------------------------------------
+    # 주의:
+    # prefix 명령어 자체는 interaction이 아니므로
+    # Discord Modal을 직접 열 수 없습니다.
+    #
+    # 따라서 아래 버튼을 사용합니다.
+    # -----------------------------------------------------
+
+    view = ProfileEditView()
+
+
+    try:
+
+        await ctx.send(
+
+            f"{ctx.author.mention}\n"
+            f"아래 버튼을 눌러 프로필을 편집해주세요.",
+
+            view=view
+
+        )
+
+    except Exception as e:
+
+        print(
+            f"[PROFILE VIEW ERROR] {e}"
+        )
+
+
+# =========================================================
+# 프로필 편집 버튼
+# =========================================================
+
+class ProfileEditView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=300
+        )
+
+
+    @discord.ui.button(
+
+        label="프로필 편집",
+
+        emoji="✏️",
+
+        style=
+        discord.ButtonStyle.primary
+
+    )
+    async def edit(
+
+        self,
+
+        interaction:
+        discord.Interaction,
+
+        button:
+        discord.ui.Button
+
+    ):
+
+        await interaction.response.send_modal(
+            ProfileModal()
+        )
+
+
+# =========================================================
+# !프로필삭제
+# =========================================================
+
+@bot.command(
+    name="프로필삭제"
+)
+async def profile_delete_command(
+    ctx
+):
+
+    uid = str(
+        ctx.author.id
+    )
+
+
+    if uid not in profiles:
+
+        await ctx.send(
+            "❌ 저장된 프로필이 없습니다."
+        )
+
+        return
+
+
+    profiles.pop(
+        uid,
+        None
+    )
+
+
+    save_json(
+
+        FILES["profiles"],
+
+        profiles
+
+    )
+
+
+    await ctx.send(
+
+        f"🗑️ {ctx.author.mention}님의 "
+        f"프로필을 삭제했습니다."
+
+    )
+
+
+# =========================================================
+# !자기소개제외
+# =========================================================
+
+@bot.command(
+    name="자기소개제외"
+)
+async def intro_exception_add(
+    ctx,
+    member: discord.Member = None
+):
+
+    if not is_admin(
+        ctx.author
+    ):
+
+        await ctx.send(
+            "❌ 관리자만 사용할 수 있습니다."
+        )
+
+        return
+
+
+    if member is None:
+
+        await ctx.send(
+
+            "❌ 사용법: "
+            "`!자기소개제외 @회원`"
+
+        )
+
+        return
+
+
+    intro_exceptions.add(
+        member.id
+    )
+
+
+    save_json(
+
+        FILES["exceptions"],
+
+        list(intro_exceptions)
+
+    )
+
+
+    pending_kicks.discard(
+        member.id
+    )
+
+
+    await ctx.send(
+
+        f"✅ {member.mention}님을 "
+        f"자기소개 검사에서 제외했습니다."
+
+    )
+
+
+# =========================================================
+# !자기소개제외취소
+# =========================================================
+
+@bot.command(
+    name="자기소개제외취소"
+)
+async def intro_exception_remove(
+    ctx,
+    member: discord.Member = None
+):
+
+    if not is_admin(
+        ctx.author
+    ):
+
+        await ctx.send(
+            "❌ 관리자만 사용할 수 있습니다."
+        )
+
+        return
+
+
+    if member is None:
+
+        await ctx.send(
+
+            "❌ 사용법: "
+            "`!자기소개제외 @회원`"
+
+        )
+
+        return
+
+
+    intro_exceptions.discard(
+        member.id
+    )
+
+
+    save_json(
+
+        FILES["exceptions"],
+
+        list(intro_exceptions)
+
+    )
+
+
+    await ctx.send(
+
+        f"✅ {member.mention}님의 "
+        f"자기소개 제외를 해제했습니다."
 
     )
 
@@ -1389,11 +1901,8 @@ async def on_member_join(
 # =========================================================
 
 async def restricted_access(
-
     member,
-
     allow=False
-
 ):
 
     channels = []
@@ -1411,9 +1920,7 @@ async def restricted_access(
     if adult_channel:
 
         channels.append(
-
             adult_channel
-
         )
 
 
@@ -1433,9 +1940,7 @@ async def restricted_access(
     ):
 
         channels.append(
-
             body_channel
-
         )
 
 
@@ -1451,7 +1956,8 @@ async def restricted_access(
 
                     overwrite=None,
 
-                    reason="경고 해제"
+                    reason=
+                    "경고 해제"
 
                 )
 
@@ -1477,17 +1983,15 @@ async def restricted_access(
 
                     overwrite=overwrite,
 
-                    reason="경고 제한"
+                    reason=
+                    "경고 제한"
 
                 )
-
 
         except Exception as e:
 
             print(
-
                 f"[제한 채널 오류] {e}"
-
             )
 
 
@@ -1496,24 +2000,17 @@ async def restricted_access(
 # =========================================================
 
 async def apply_warning(
-
     member,
-
     reason="사유 없음"
-
 ):
 
     member_id = str(
-
         member.id
-
     )
 
 
     count = warning_count(
-
         member
-
     ) + 1
 
 
@@ -1550,9 +2047,7 @@ async def apply_warning(
 
 
     timeout = WARNING_TIMEOUT.get(
-
         count
-
     )
 
 
@@ -1562,22 +2057,21 @@ async def apply_warning(
 
             await member.timeout(
 
-                now() + timedelta(
-
+                now()
+                +
+                timedelta(
                     seconds=timeout
-
                 ),
 
-                reason=f"경고 {count}회"
+                reason=
+                f"경고 {count}회"
 
             )
 
         except Exception as e:
 
             print(
-
                 f"[TIMEOUT ERROR] {e}"
-
             )
 
 
@@ -1587,16 +2081,15 @@ async def apply_warning(
 
             await member.kick(
 
-                reason=f"경고 {count}회 누적"
+                reason=
+                f"경고 {count}회 누적"
 
             )
 
         except Exception as e:
 
             print(
-
                 f"[KICK ERROR] {e}"
-
             )
 
 
@@ -1608,21 +2101,14 @@ async def apply_warning(
 # =========================================================
 
 async def send_warning_log(
-
     guild,
-
     member,
-
     count,
-
     reason
-
 ):
 
     log = get_log_channel(
-
         guild
-
     )
 
 
@@ -1653,8 +2139,11 @@ async def send_warning_log(
         f"⚠️ **경고 처리**\n\n"
 
         f"대상: {member.mention}\n"
+
         f"경고: `{count}회`\n"
+
         f"사유: `{reason}`\n"
+
         f"조치: {action}"
 
     )
@@ -1665,16 +2154,14 @@ async def send_warning_log(
 # =========================================================
 
 @bot.command(
-
     name="경고"
-
 )
-
 async def warning_command(
 
     ctx,
 
-    member: discord.Member = None,
+    member:
+    discord.Member = None,
 
     *,
 
@@ -1683,15 +2170,11 @@ async def warning_command(
 ):
 
     if not is_admin(
-
         ctx.author
-
     ):
 
         await ctx.send(
-
             "❌ 관리자만 사용할 수 있습니다."
-
         )
 
         return
@@ -1700,9 +2183,7 @@ async def warning_command(
     if member is None:
 
         await ctx.send(
-
             "❌ 회원을 멘션해주세요."
-
         )
 
         return
@@ -1711,9 +2192,7 @@ async def warning_command(
     if member.bot:
 
         await ctx.send(
-
             "❌ 봇에게 경고 불가"
-
         )
 
         return
@@ -1755,7 +2234,9 @@ async def warning_command(
         text = (
 
             f"⚠️ {member.mention}님\n"
+
             f"경고 {count}회\n"
+
             f"24시간 타임아웃"
 
         )
@@ -1765,7 +2246,9 @@ async def warning_command(
         text = (
 
             f"⚠️ {member.mention}님\n"
+
             f"경고 {count}회\n"
+
             f"1시간 타임아웃"
 
         )
@@ -1775,16 +2258,16 @@ async def warning_command(
         text = (
 
             f"⚠️ {member.mention}님\n"
+
             f"경고 {count}회 누적\n"
+
             f"제한 채널 차단"
 
         )
 
 
     await ctx.send(
-
         text
-
     )
 
 
@@ -1793,29 +2276,23 @@ async def warning_command(
 # =========================================================
 
 @bot.command(
-
     name="경고목록"
-
 )
-
 async def warning_list(
 
     ctx,
 
-    member: discord.Member = None
+    member:
+    discord.Member = None
 
 ):
 
     if not is_admin(
-
         ctx.author
-
     ):
 
         await ctx.send(
-
             "❌ 관리자만 사용 가능"
-
         )
 
         return
@@ -1835,8 +2312,12 @@ async def warning_list(
         await ctx.send(
 
             f"⚠️ {member.mention}\n"
-            f"경고: `{data.get('count', 0)}회`\n"
-            f"사유: `{data.get('last_reason', '없음')}`"
+
+            f"경고: "
+            f"`{data.get('count', 0)}회`\n"
+
+            f"사유: "
+            f"`{data.get('last_reason', '없음')}`"
 
         )
 
@@ -1846,9 +2327,7 @@ async def warning_list(
     if not warnings:
 
         await ctx.send(
-
             "📋 경고 기록 없음"
-
         )
 
         return
@@ -1859,19 +2338,21 @@ async def warning_list(
 
     for uid, data in warnings.items():
 
-        m = ctx.guild.get_member(
+        try:
 
-            int(uid)
+            m = ctx.guild.get_member(
+                int(uid)
+            )
 
-        )
+        except Exception:
+
+            m = None
 
 
         name = (
 
             m.mention
-
             if m
-
             else uid
 
         )
@@ -1888,6 +2369,7 @@ async def warning_list(
     await ctx.send(
 
         "⚠️ **전체 경고 목록**\n\n"
+
         +
         "\n".join(result)
 
@@ -1899,23 +2381,19 @@ async def warning_list(
 # =========================================================
 
 @bot.command(
-
     name="경고취소"
-
 )
-
 async def warning_remove(
 
     ctx,
 
-    member: discord.Member = None
+    member:
+    discord.Member = None
 
 ):
 
     if not is_admin(
-
         ctx.author
-
     ):
 
         return
@@ -1927,25 +2405,19 @@ async def warning_remove(
 
 
     uid = str(
-
         member.id
-
     )
 
 
     count = warning_count(
-
         member
-
     )
 
 
     if count <= 0:
 
         await ctx.send(
-
             "❌ 경고 없음"
-
         )
 
         return
@@ -1957,11 +2429,8 @@ async def warning_remove(
     if count <= 0:
 
         warnings.pop(
-
             uid,
-
             None
-
         )
 
 
@@ -1980,7 +2449,8 @@ async def warning_remove(
 
                 None,
 
-                reason="경고 취소"
+                reason=
+                "경고 취소"
 
             )
 
@@ -2023,6 +2493,7 @@ async def warning_remove(
 
         f"✅ {member.mention} "
         f"경고 취소\n"
+
         f"현재 `{count}회`"
 
     )
@@ -2033,23 +2504,19 @@ async def warning_remove(
 # =========================================================
 
 @bot.command(
-
     name="경고초기화"
-
 )
-
 async def warning_reset(
 
     ctx,
 
-    member: discord.Member = None
+    member:
+    discord.Member = None
 
 ):
 
     if not is_admin(
-
         ctx.author
-
     ):
 
         return
@@ -2093,7 +2560,8 @@ async def warning_reset(
 
             None,
 
-            reason="경고 초기화"
+            reason=
+            "경고 초기화"
 
         )
 
@@ -2111,1620 +2579,36 @@ async def warning_reset(
 
 
 # =========================================================
-# 프로필 기본값
-# =========================================================
-
-def get_profile(user_id):
-
-    user_id = str(user_id)
-
-
-    if user_id not in profiles:
-
-        profiles[user_id] = {
-
-            "birth_year": None,
-
-            "gender": None,
-
-            "location": None,
-
-            "ideal_type": None,
-
-            "likes": None,
-
-            "updated_at": None
-
-        }
-
-
-    return profiles[user_id]
-
-
-# =========================================================
-# 프로필 완료 여부
-# =========================================================
-
-def profile_complete(user_id):
-
-    profile = profiles.get(
-
-        str(user_id)
-
-    )
-
-
-    if not profile:
-
-        return False
-
-
-    required = [
-
-        "birth_year",
-
-        "gender",
-
-        "location",
-
-        "ideal_type",
-
-        "likes"
-
-    ]
-
-
-    return all(
-
-        profile.get(field)
-
-        for field in required
-
-    )
-
-
-# =========================================================
-# 프로필 Embed
-# =========================================================
-
-def profile_embed(
-
-    member,
-
-    profile=None
-
-):
-
-    if profile is None:
-
-        profile = profiles.get(
-
-            str(member.id),
-
-            {}
-
-        )
-
-
-    birth_year = profile.get(
-
-        "birth_year"
-
-    )
-
-
-    if birth_year:
-
-        try:
-
-            age_text = f"{datetime.now().year - int(birth_year) + 1}세"
-
-        except Exception:
-
-            age_text = "미입력"
-
-    else:
-
-        age_text = "미입력"
-
-
-    gender = gender_text(
-
-        profile.get(
-
-            "gender"
-
-        )
-
-    )
-
-
-    embed = discord.Embed(
-
-        title="💗 프로필",
-
-        description=
-        f"**{member.display_name}**님의 프로필",
-
-        color=discord.Color.from_rgb(
-
-            255,
-
-            120,
-
-            170
-
-        )
-
-    )
-
-
-    embed.add_field(
-
-        name="🎂 나이",
-
-        value=age_text,
-
-        inline=True
-
-    )
-
-
-    embed.add_field(
-
-        name="⚧ 성별",
-
-        value=gender,
-
-        inline=True
-
-    )
-
-
-    embed.add_field(
-
-        name="📍 사는 곳",
-
-        value=profile.get(
-
-            "location",
-
-            "미입력"
-
-        ),
-
-        inline=False
-
-    )
-
-
-    embed.add_field(
-
-        name="💘 이상형",
-
-        value=profile.get(
-
-            "ideal_type",
-
-            "미입력"
-
-        ),
-
-        inline=False
-
-    )
-
-
-    embed.add_field(
-
-        name="🎀 좋아하는 것",
-
-        value=profile.get(
-
-            "likes",
-
-            "미입력"
-
-        ),
-
-        inline=False
-
-    )
-
-
-    embed.set_thumbnail(
-
-        url=member.display_avatar.url
-
-    )
-
-
-    return embed
-
-
-# =========================================================
-# 프로필 편집 Modal
-# =========================================================
-
-class ProfileModal(
-
-    discord.ui.Modal,
-
-    title="💗 프로필 편집"
-
-):
-
-    birth_year = discord.ui.TextInput(
-
-        label="출생년도",
-
-        placeholder="예: 2004 또는 04",
-
-        required=True,
-
-        max_length=4
-
-    )
-
-
-    location = discord.ui.TextInput(
-
-        label="사는 곳",
-
-        placeholder="예: 서울",
-
-        required=True,
-
-        max_length=50
-
-    )
-
-
-    gender = discord.ui.TextInput(
-
-        label="성별",
-
-        placeholder="남 / 여",
-
-        required=True,
-
-        max_length=10
-
-    )
-
-
-    ideal_type = discord.ui.TextInput(
-
-        label="이상형",
-
-        placeholder="어떤 사람을 좋아하나요?",
-
-        required=True,
-
-        max_length=200,
-
-        style=discord.TextStyle.paragraph
-
-    )
-
-
-    likes = discord.ui.TextInput(
-
-        label="좋아하는 것",
-
-        placeholder="예: 게임, 음악, 카페",
-
-        required=True,
-
-        max_length=200,
-
-        style=discord.TextStyle.paragraph
-
-    )
-
-
-    async def on_submit(
-
-        self,
-
-        interaction: discord.Interaction
-
-    ):
-
-        member = interaction.user
-
-
-        # ---------------------------------------------
-        # 출생년도 처리
-        # ---------------------------------------------
-
-        raw_year = self.birth_year.value.strip()
-
-
-        if not raw_year.isdigit():
-
-            await interaction.response.send_message(
-
-                "❌ 출생년도는 숫자로 입력해주세요.",
-
-                ephemeral=True
-
-            )
-
-            return
-
-
-        if len(raw_year) == 2:
-
-            year = 2000 + int(raw_year)
-
-        elif len(raw_year) == 4:
-
-            year = int(raw_year)
-
-        else:
-
-            await interaction.response.send_message(
-
-                "❌ 출생년도는 `04` 또는 `2004`처럼 입력해주세요.",
-
-                ephemeral=True
-
-            )
-
-            return
-
-
-        current_year = datetime.now().year
-
-
-        if year < 1900 or year > current_year:
-
-            await interaction.response.send_message(
-
-                "❌ 올바른 출생년도를 입력해주세요.",
-
-                ephemeral=True
-
-            )
-
-            return
-
-
-        # ---------------------------------------------
-        # 서버 자기소개 정보와 비교
-        # ---------------------------------------------
-
-        member_info = member_data(member)
-
-        intro_year = member_info.get(
-
-            "birth_year"
-
-        )
-
-
-        if intro_year and int(intro_year) != year:
-
-            await interaction.response.send_message(
-
-                f"❌ 자기소개에서 등록한 출생년도 "
-                f"`{intro_year}`와 다릅니다.",
-
-                ephemeral=True
-
-            )
-
-            return
-
-
-        # ---------------------------------------------
-        # 성별
-        # ---------------------------------------------
-
-        gender_raw = self.gender.value.strip().lower()
-
-
-        if gender_raw in (
-
-            "남",
-
-            "남자",
-
-            "ㄴ",
-
-            "m",
-
-            "male"
-
-        ):
-
-            gender = "남"
-
-        elif gender_raw in (
-
-            "여",
-
-            "여자",
-
-            "ㅇ",
-
-            "f",
-
-            "female"
-
-        ):
-
-            gender = "여"
-
-        else:
-
-            await interaction.response.send_message(
-
-                "❌ 성별은 `남` 또는 `여`로 입력해주세요.",
-
-                ephemeral=True
-
-            )
-
-            return
-
-
-        # ---------------------------------------------
-        # 자기소개 성별과 비교
-        # ---------------------------------------------
-
-        intro_gender = member_info.get(
-
-            "gender"
-
-        )
-
-
-        if intro_gender and intro_gender != gender:
-
-            await interaction.response.send_message(
-
-                f"❌ 자기소개에서 등록한 성별 "
-                f"`{gender_text(intro_gender)}`와 다릅니다.",
-
-                ephemeral=True
-
-            )
-
-            return
-
-
-        # ---------------------------------------------
-        # 연령 제한
-        # ---------------------------------------------
-
-        if year >= MIN_ALLOWED_BIRTH_YEAR:
-
-            await interaction.response.send_message(
-
-                "❌ 현재 서버 이용 연령 제한에 해당합니다.",
-
-                ephemeral=True
-
-            )
-
-            return
-
-
-        # ---------------------------------------------
-        # 프로필 저장
-        # ---------------------------------------------
-
-        profiles[str(member.id)] = {
-
-            "birth_year":
-                year,
-
-            "gender":
-                gender,
-
-            "location":
-                self.location.value.strip(),
-
-            "ideal_type":
-                self.ideal_type.value.strip(),
-
-            "likes":
-                self.likes.value.strip(),
-
-            "updated_at":
-                iso(now())
-
-        }
-
-
-        save_json(
-
-            FILES["profiles"],
-
-            profiles
-
-        )
-
-
-        await interaction.response.send_message(
-
-            "💗 프로필 저장 완료!\n"
-            "`/프로필` 명령어로 확인할 수 있어요.",
-
-            ephemeral=True
-
-        )
-
-
-# =========================================================
-# 프로필 편집 버튼
-# =========================================================
-
-class ProfileEditView(
-
-    discord.ui.View
-
-):
-
-    def __init__(self):
-
-        super().__init__(
-
-            timeout=180
-
-        )
-
-
-    @discord.ui.button(
-
-        label="프로필 작성 / 수정",
-
-        emoji="💗",
-
-        style=discord.ButtonStyle.primary
-
-    )
-
-    async def edit(
-
-        self,
-
-        interaction: discord.Interaction,
-
-        button: discord.ui.Button
-
-    ):
-
-        await interaction.response.send_modal(
-
-            ProfileModal()
-
-        )
-
-
-# =========================================================
-# /프로필 편집
-# =========================================================
-
-@bot.tree.command(
-
-    name="프로필_편집",
-
-    description="내 프로필을 작성하거나 수정합니다."
-
-)
-
-async def profile_edit(
-
-    interaction: discord.Interaction
-
-):
-
-    embed = discord.Embed(
-
-        title="💗 프로필 편집",
-
-        description=(
-
-            "아래 버튼을 눌러 프로필을 작성해주세요.\n\n"
-
-            "🎂 출생년도\n"
-            "📍 사는 곳\n"
-            "⚧ 성별\n"
-            "💘 이상형\n"
-            "🎀 좋아하는 것"
-
-        ),
-
-        color=discord.Color.from_rgb(
-
-            255,
-
-            120,
-
-            170
-
-        )
-
-    )
-
-
-    await interaction.response.send_message(
-
-        embed=embed,
-
-        view=ProfileEditView(),
-
-        ephemeral=True
-
-    )
-
-
-# =========================================================
-# /프로필
-# =========================================================
-
-@bot.tree.command(
-
-    name="프로필",
-
-    description="프로필을 확인합니다."
-
-)
-
-async def profile_command(
-
-    interaction: discord.Interaction,
-
-    member: discord.Member = None
-
-):
-
-    target = member or interaction.user
-
-
-    profile = profiles.get(
-
-        str(target.id)
-
-    )
-
-
-    if not profile:
-
-        await interaction.response.send_message(
-
-            "❌ 아직 작성된 프로필이 없습니다.",
-
-            ephemeral=True
-
-        )
-
-        return
-
-
-    embed = profile_embed(
-
-        target,
-
-        profile
-
-    )
-
-
-    await interaction.response.send_message(
-
-        embed=embed
-
-    )
-
-
-# =========================================================
-# 매칭 데이터 함수
-# =========================================================
-
-def get_match_data(user_id):
-
-    uid = str(user_id)
-
-
-    if uid not in matches:
-
-        matches[uid] = {
-
-            "yes": [],
-
-            "no": [],
-
-            "matched": []
-
-        }
-
-
-    return matches[uid]
-
-
-def already_decided(
-
-    user_id,
-
-    target_id
-
-):
-
-    data = get_match_data(
-
-        user_id
-
-    )
-
-
-    target_id = str(target_id)
-
-
-    return (
-
-        target_id in data["yes"]
-
-        or
-
-        target_id in data["no"]
-
-    )
-
-
-def already_matched(
-
-    user_id,
-
-    target_id
-
-):
-
-    data = get_match_data(
-
-        user_id
-
-    )
-
-
-    return str(target_id) in data["matched"]
-
-
-def add_unique(
-
-    array,
-
-    value
-
-):
-
-    value = str(value)
-
-
-    if value not in array:
-
-        array.append(value)
-
-
-# =========================================================
-# 매칭 가능한지 확인
-# =========================================================
-
-def can_match(
-
-    member_a,
-
-    member_b
-
-):
-
-    if member_a.id == member_b.id:
-
-        return False
-
-
-    data_a = member_data(
-
-        member_a
-
-    )
-
-    data_b = member_data(
-
-        member_b
-
-    )
-
-
-    # 자기소개 완료 필요
-
-    if not data_a.get(
-
-        "intro_completed",
-
-        False
-
-    ):
-
-        return False
-
-
-    if not data_b.get(
-
-        "intro_completed",
-
-        False
-
-    ):
-
-        return False
-
-
-    # 프로필 작성 필요
-
-    if not profile_complete(
-
-        member_a.id
-
-    ):
-
-        return False
-
-
-    if not profile_complete(
-
-        member_b.id
-
-    ):
-
-        return False
-
-
-    year_a = data_a.get(
-
-        "birth_year"
-
-    )
-
-    year_b = data_b.get(
-
-        "birth_year"
-
-    )
-
-
-    if not year_a or not year_b:
-
-        return False
-
-
-    # 성인 / 미성년자 간 매칭 방지
-
-    if age_type(
-
-        int(year_a)
-
-    ) != age_type(
-
-        int(year_b)
-
-    ):
-
-        return False
-
-
-    return True
-
-
-# =========================================================
-# 매칭 후보 찾기
-# =========================================================
-
-def find_candidate(
-
-    guild,
-
-    user
-
-):
-
-    candidates = []
-
-
-    user_data = get_match_data(
-
-        user.id
-
-    )
-
-
-    for member in guild.members:
-
-        if member.bot:
-
-            continue
-
-
-        if member.id == user.id:
-
-            continue
-
-
-        if not can_match(
-
-            user,
-
-            member
-
-        ):
-
-            continue
-
-
-        if already_decided(
-
-            user.id,
-
-            member.id
-
-        ):
-
-            continue
-
-
-        if already_matched(
-
-            user.id,
-
-            member.id
-
-        ):
-
-            continue
-
-
-        candidates.append(
-
-            member
-
-        )
-
-
-    if not candidates:
-
-        return None
-
-
-    return random.choice(
-
-        candidates
-
-    )
-
-
-# =========================================================
-# 매칭 Embed
-# =========================================================
-
-def matching_embed(
-
-    member
-
-):
-
-    profile = profiles.get(
-
-        str(member.id),
-
-        {}
-
-    )
-
-
-    embed = profile_embed(
-
-        member,
-
-        profile
-
-    )
-
-
-    embed.title = "💗 새로운 프로필"
-
-    embed.set_footer(
-
-        text="이 프로필을 보고 선택해주세요."
-
-    )
-
-
-    return embed
-
-
-# =========================================================
-# YES / NO 버튼
-# =========================================================
-
-class MatchingView(
-
-    discord.ui.View
-
-):
-
-    def __init__(
-
-        self,
-
-        owner_id,
-
-        target_id
-
-    ):
-
-        super().__init__(
-
-            timeout=300
-
-        )
-
-        self.owner_id = owner_id
-
-        self.target_id = target_id
-
-
-    async def interaction_check(
-
-        self,
-
-        interaction: discord.Interaction
-
-    ):
-
-        if interaction.user.id != self.owner_id:
-
-            await interaction.response.send_message(
-
-                "❌ 이 매칭 카드는 본인만 사용할 수 있어요.",
-
-                ephemeral=True
-
-            )
-
-            return False
-
-
-        return True
-
-
-    async def on_timeout(
-
-        self
-
-    ):
-
-        for item in self.children:
-
-            item.disabled = True
-
-
-    @discord.ui.button(
-
-        label="YES",
-
-        emoji="💗",
-
-        style=discord.ButtonStyle.success
-
-    )
-
-    async def yes_button(
-
-        self,
-
-        interaction: discord.Interaction,
-
-        button: discord.ui.Button
-
-    ):
-
-        user = interaction.user
-
-
-        target = interaction.guild.get_member(
-
-            self.target_id
-
-        )
-
-
-        if not target:
-
-            await interaction.response.edit_message(
-
-                content="❌ 상대방을 찾을 수 없습니다.",
-
-                embed=None,
-
-                view=None
-
-            )
-
-            return
-
-
-        data = get_match_data(
-
-            user.id
-
-        )
-
-
-        target_id = str(
-
-            target.id
-
-        )
-
-
-        if target_id in data["no"]:
-
-            data["no"].remove(
-
-                target_id
-
-            )
-
-
-        add_unique(
-
-            data["yes"],
-
-            target_id
-
-        )
-
-
-        # 상대가 나에게 YES를 했는지 확인
-
-        target_data = get_match_data(
-
-            target.id
-
-        )
-
-
-        mutual = str(
-
-            user.id
-
-        ) in target_data["yes"]
-
-
-        if mutual:
-
-            add_unique(
-
-                data["matched"],
-
-                target_id
-
-            )
-
-            add_unique(
-
-                target_data["matched"],
-
-                str(user.id)
-
-            )
-
-
-            save_json(
-
-                FILES["matches"],
-
-                matches
-
-
-            )
-
-            await interaction.response.edit_message(
-
-                content=(
-
-                    "💗 **매칭됐어요!**\n\n"
-
-                    f"{target.mention}님과 서로 YES를 눌렀어요.\n"
-
-                    "서로의 프로필을 확인하고 대화를 시작해보세요!"
-
-                ),
-
-                embed=None,
-
-                view=None
-
-            )
-
-
-            try:
-
-                await target.send(
-
-                    f"💗 **매칭됐어요!**\n\n"
-                    f"{user.display_name}님과 "
-                    f"서로 YES를 눌렀어요!\n\n"
-                    f"상대 프로필:\n"
-                    f"{target.guild.name}"
-
-                )
-
-            except Exception:
-
-                pass
-
-
-        else:
-
-            save_json(
-
-                FILES["matches"],
-
-                matches
-
-
-            )
-
-            await interaction.response.edit_message(
-
-                content=(
-
-                    "💗 YES를 선택했어요.\n\n"
-                    "상대방도 YES를 선택하면 매칭됩니다."
-
-                ),
-
-                embed=None,
-
-                view=None
-
-            )
-
-
-    @discord.ui.button(
-
-        label="NO",
-
-        emoji="❌",
-
-        style=discord.ButtonStyle.secondary
-
-    )
-
-    async def no_button(
-
-        self,
-
-        interaction: discord.Interaction,
-
-        button: discord.ui.Button
-
-    ):
-
-        user = interaction.user
-
-
-        target_id = str(
-
-            self.target_id
-
-        )
-
-
-        data = get_match_data(
-
-            user.id
-
-        )
-
-
-        if target_id in data["yes"]:
-
-            data["yes"].remove(
-
-                target_id
-
-            )
-
-
-        add_unique(
-
-            data["no"],
-
-            target_id
-
-
-        )
-
-
-        save_json(
-
-            FILES["matches"],
-
-            matches
-
-
-        )
-
-
-        await interaction.response.edit_message(
-
-            content=(
-
-                "❌ NO를 선택했어요.\n\n"
-
-                "다음 프로필을 보려면 `/매칭`을 사용해주세요."
-
-            ),
-
-            embed=None,
-
-            view=None
-
-        )
-
-
-# =========================================================
-# /매칭
-# =========================================================
-
-@bot.tree.command(
-
-    name="매칭",
-
-    description="새로운 프로필을 확인합니다."
-
-)
-
-async def matching_command(
-
-    interaction: discord.Interaction
-
-):
-
-    user = interaction.user
-
-
-    # ---------------------------------------------
-    # 자기소개 확인
-    # ---------------------------------------------
-
-    data = member_data(
-
-        user
-
-    )
-
-
-    if not data.get(
-
-        "intro_completed",
-
-        False
-
-    ):
-
-        await interaction.response.send_message(
-
-            "❌ 먼저 서버 자기소개를 완료해주세요.",
-
-            ephemeral=True
-
-        )
-
-        return
-
-
-    # ---------------------------------------------
-    # 프로필 확인
-    # ---------------------------------------------
-
-    if not profile_complete(
-
-        user.id
-
-    ):
-
-        await interaction.response.send_message(
-
-            "❌ 먼저 `/프로필_편집`에서 "
-            "프로필을 작성해주세요.",
-
-            ephemeral=True
-
-        )
-
-        return
-
-
-    # ---------------------------------------------
-    # 후보 찾기
-    # ---------------------------------------------
-
-    target = find_candidate(
-
-        interaction.guild,
-
-        user
-
-    )
-
-
-    if not target:
-
-        await interaction.response.send_message(
-
-            "💭 지금 보여드릴 수 있는 "
-            "새로운 프로필이 없어요.",
-
-            ephemeral=True
-
-        )
-
-        return
-
-
-    # ---------------------------------------------
-    # 프로필 표시
-    # ---------------------------------------------
-
-    embed = matching_embed(
-
-        target
-
-    )
-
-
-    view = MatchingView(
-
-        user.id,
-
-        target.id
-
-    )
-
-
-    await interaction.response.send_message(
-
-        embed=embed,
-
-        view=view
-
-    )
-
-
-# =========================================================
-# /매칭목록
-# =========================================================
-
-@bot.tree.command(
-
-    name="매칭목록",
-
-    description="내가 매칭된 사람을 확인합니다."
-
-)
-
-async def match_list(
-
-    interaction: discord.Interaction
-
-):
-
-    data = get_match_data(
-
-        interaction.user.id
-
-    )
-
-
-    matched = data.get(
-
-        "matched",
-
-        []
-
-    )
-
-
-    if not matched:
-
-        await interaction.response.send_message(
-
-            "💭 아직 매칭된 사람이 없어요.",
-
-            ephemeral=True
-
-        )
-
-        return
-
-
-    result = []
-
-
-    for uid in matched:
-
-        member = interaction.guild.get_member(
-
-            int(uid)
-
-        )
-
-
-        if member:
-
-            result.append(
-
-                f"💗 {member.mention}"
-
-            )
-
-
-    if not result:
-
-        await interaction.response.send_message(
-
-            "💭 아직 매칭된 사람이 없어요.",
-
-            ephemeral=True
-
-        )
-
-        return
-
-
-    await interaction.response.send_message(
-
-        "💗 **내 매칭 목록**\n\n"
-        +
-        "\n".join(result),
-
-        ephemeral=True
-
-    )
-
-
-# =========================================================
 # 메시지 이벤트
 # =========================================================
 
 @bot.event
-
 async def on_message(
-
     message
-
 ):
+
+    # 봇 무시
 
     if message.author.bot:
 
         return
 
 
+    # DM 무시
+
     if not message.guild:
 
         return
 
 
+    # 지정 서버만
+
     if message.guild.id != GUILD_ID:
 
         return
 
+
+    # 활동 기록
 
     data = member_data(
 
@@ -3734,9 +2618,7 @@ async def on_message(
 
 
     data["last_activity"] = iso(
-
         now()
-
     )
 
 
@@ -3746,15 +2628,22 @@ async def on_message(
 
     if (
 
-        message.channel.id == INTRO_CHANNEL_ID
+        message.channel.id
+        ==
+        INTRO_CHANNEL_ID
 
-        and not data.get(
+        and
 
+        not data.get(
             "intro_completed",
-
             False
-
         )
+
+        and
+
+        message.author.id
+        not in
+        intro_exceptions
 
     ):
 
@@ -3790,10 +2679,10 @@ async def on_message(
     )
 
 
+    # !명령어 처리
+
     await bot.process_commands(
-
         message
-
     )
 
 
@@ -3802,21 +2691,16 @@ async def on_message(
 # =========================================================
 
 @bot.event
-
 async def on_ready():
 
     print("=" * 50)
 
     print(
-
         f"로그인 완료 : {bot.user}"
-
     )
 
     print(
-
         f"서버 수 : {len(bot.guilds)}"
-
     )
 
     print("=" * 50)
@@ -3826,84 +2710,40 @@ async def on_ready():
 
 
     guild = bot.get_guild(
-
         GUILD_ID
-
     )
 
 
     if not guild:
 
         print(
-
             "❌ 서버를 찾을 수 없음"
-
         )
 
         return
 
 
     print(
-
         f"[SERVER] {guild.name}"
-
     )
 
 
-    # =====================================================
-    # 슬래시 명령어 동기화
-    # =====================================================
-
-    try:
-
-        synced = await bot.tree.sync(
-
-            guild=discord.Object(
-
-                id=GUILD_ID
-
-            )
-
-        )
-
-
-        print(
-
-            f"[SLASH] "
-            f"{len(synced)}개 명령어 동기화 완료"
-
-        )
-
-    except Exception as e:
-
-        print(
-
-            f"[SLASH ERROR] {e}"
-
-        )
-
-
-    # =====================================================
     # 자기소개 체크
-    # =====================================================
 
     if not intro_check.is_running():
 
         intro_check.start()
 
         print(
-
             "[CHECK] 자기소개 감시 시작"
-
         )
 
 
 # =========================================================
-# 명령어 오류 처리
+# 명령어 오류
 # =========================================================
 
 @bot.event
-
 async def on_command_error(
 
     ctx,
@@ -3960,7 +2800,8 @@ async def on_command_error(
     print(
 
         f"[ERROR] "
-        f"{type(error).__name__}: {error}"
+        f"{type(error).__name__}: "
+        f"{error}"
 
     )
 
@@ -3990,14 +2831,10 @@ if not TOKEN:
 # =========================================================
 
 print(
-
     "[BOT] Discord 연결 중..."
-
 )
 
 
 bot.run(
-
     TOKEN
-
 )
