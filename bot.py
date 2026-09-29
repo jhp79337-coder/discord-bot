@@ -3001,12 +3001,12 @@ class DatingLobbyView(discord.ui.View):
         dating_queue.remove(opponent_id)
 
         opponent = interaction.guild.get_member(opponent_id)
-        if not opponent or not is_adult_for_dating(opponent):
+        if not opponent:
             if opponent_id not in dating_queue:
                 dating_queue.append(opponent_id)
             save_dating_data()
             await interaction.response.send_message(
-                "⏳ 상대 정보를 확인하는 중 문제가 생겨 다시 대기열로 돌렸어요.",
+                "⏳ 상대를 찾지 못해서 다시 대기열로 돌렸어요.",
                 ephemeral=True
             )
             return
