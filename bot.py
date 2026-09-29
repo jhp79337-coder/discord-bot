@@ -2603,27 +2603,63 @@ def dating_member_session(member_id):
     return None, None
 
 
-def is_adult_for_dating(member):
+def get_dating_group(member):
+    """소개팅 연령 그룹: 성인 / 미성년자 / None."""
     if member.bot:
-        return False
+        return None
 
-    data = members.get(
-        str(member.id),
-        {}
-    )
+    data = members.get(str(member.id), {})
+
+    if not data.get("intro_completed"):
+        return None
 
     birth_year = data.get("birth_year")
-    if not data.get("intro_completed") or not birth_year:
+    if not isinstance(birth_year, int):
+        return None
+
+    # 2007년생까지 성인, 2008~2011년생은 미성년자
+    if birth_year <= ADULT_CUTOFF:
+        return "adult"
+
+    if MIN_ALLOWED_BIRTH_YEAR > birth_year > ADULT_CUTOFF:
+        return "minor"
+
+    return None
+
+
+def get_dating_gender(member):
+    """소개팅 성별: 남 / 여 / None."""
+    data = members.get(str(member.id), {})
+    gender = data.get("gender")
+
+    if gender in ("남", "여"):
+        return gender
+
+    return None
+
+
+def can_dating_match(member_a, member_b):
+    """소개팅 매칭 조건을 한 곳에서 강제한다.
+
+    1. 성인 ↔ 성인 / 미성년자 ↔ 미성년자
+    2. 남자 ↔ 여자
+    3. 둘 다 자기소개 완료 회원
+    """
+    group_a = get_dating_group(member_a)
+    group_b = get_dating_group(member_b)
+    gender_a = get_dating_gender(member_a)
+    gender_b = get_dating_gender(member_b)
+
+    if not group_a or not group_b:
         return False
 
-    if birth_year > ADULT_CUTOFF:
+    if group_a != group_b:
         return False
 
-    adult_role = member.guild.get_role(ROLES["adult"])
-    if adult_role and adult_role not in member.roles:
+    if gender_a not in ("남", "여") or gender_b not in ("남", "여"):
         return False
 
-    return True
+    return gender_a != gender_b
 
 
 async def get_dating_category(guild):
@@ -2959,9 +2995,12 @@ class DatingLobbyView(discord.ui.View):
     async def join(self, interaction, button):
         member = interaction.user
 
-        if not is_adult_for_dating(member):
+        member_group = get_dating_group(member)
+        member_gender = get_dating_gender(member)
+
+        if not member_group or not member_gender:
             await interaction.response.send_message(
-                "🔞 소개팅은 자기소개를 완료한 성인 회원만 참가할 수 있어요.",
+                "❌ 자기소개를 완료하고 성별·출생년도가 정상적으로 등록된 회원만 소개팅에 참가할 수 있어요.",
                 ephemeral=True
             )
             return
@@ -2983,9 +3022,20 @@ class DatingLobbyView(discord.ui.View):
 
         dating_queue.append(member.id)
 
-        opponent_id = random.choice(
-            [uid for uid in dating_queue if uid != member.id]
-        ) if len(dating_queue) >= 2 else None
+        # 중요: 같은 연령대 + 이성인 회원만 후보로 선택
+        candidates = []
+        for uid in dating_queue:
+            if uid == member.id:
+                continue
+
+            opponent = interaction.guild.get_member(uid)
+            if not opponent:
+                continue
+
+            if can_dating_match(member, opponent):
+                candidates.append(uid)
+
+        opponent_id = random.choice(candidates) if candidates else None
 
         if opponent_id is None:
             save_dating_data()
@@ -3007,6 +3057,19 @@ class DatingLobbyView(discord.ui.View):
             save_dating_data()
             await interaction.response.send_message(
                 "⏳ 상대를 찾지 못해서 다시 대기열로 돌렸어요.",
+                ephemeral=True
+            )
+            return
+
+        # 최종 안전 검사: 조건이 하나라도 다르면 절대 매칭하지 않음
+        if not can_dating_match(member, opponent):
+            if opponent_id not in dating_queue:
+                dating_queue.append(opponent_id)
+            if member.id not in dating_queue:
+                dating_queue.append(member.id)
+            save_dating_data()
+            await interaction.response.send_message(
+                "⏳ 현재 조건에 맞는 상대가 없어 대기열에 남아있어요.",
                 ephemeral=True
             )
             return
@@ -3101,9 +3164,9 @@ class DatingLobbyView(discord.ui.View):
     name="소개팅"
 )
 async def dating_command(ctx):
-    if not is_adult_for_dating(ctx.author):
+    if not get_dating_group(ctx.author) or not get_dating_gender(ctx.author):
         await ctx.send(
-            "🔞 `!소개팅`은 자기소개를 완료한 성인 회원만 이용할 수 있어요."
+            "❌ 자기소개를 완료하고 성별·출생년도가 정상적으로 등록된 회원만 `!소개팅`을 이용할 수 있어요."
         )
         return
 
@@ -3409,4 +3472,4 @@ print(
 
 bot.run(
     TOKEN
-)
+        )
