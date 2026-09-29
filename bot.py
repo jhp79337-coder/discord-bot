@@ -27,13 +27,16 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 try:
+
     GUILD_ID = int(
         os.getenv(
             "GUILD_ID",
             "1553419235701690428"
         )
     )
+
 except ValueError:
+
     GUILD_ID = 1553419235701690428
 
 
@@ -42,9 +45,13 @@ except ValueError:
 # =========================================================
 
 LOG_CHANNEL_ID = 1553436251598626866
+
 INTRO_CHANNEL_ID = 1553435494074023956
+
 ROLE_CHANNEL_ID = 1553458747177967656
+
 MAIN_CHAT_ID = 1553421449698480248
+
 BODY_SHARE_ID = 1553432612377202849
 
 
@@ -131,9 +138,13 @@ WARNING_TIMEOUT = {
 intents = discord.Intents.default()
 
 intents.guilds = True
+
 intents.members = True
+
 intents.messages = True
+
 intents.message_content = True
+
 intents.voice_states = True
 
 
@@ -153,13 +164,15 @@ bot = commands.Bot(
 # =========================================================
 
 members = {}
+
 warnings = {}
+
 profiles = {}
 
 intro_exceptions = set()
 pending_kicks = set()
 
-# 소개팅
+# 소개팅 콘텐츠 데이터
 dating_queue = []
 dating_sessions = {}
 dating_views_registered = False
@@ -272,39 +285,18 @@ def load_data():
 
     dating_data = load_json(
         FILES["dating"],
-        {
-            "queue": [],
-            "sessions": {}
-        }
+        {"queue": [], "sessions": {}}
     )
 
     dating_queue = []
-
-    for value in dating_data.get(
-        "queue",
-        []
-    ):
-
+    for value in dating_data.get("queue", []):
         try:
-
-            dating_queue.append(
-                int(value)
-            )
-
+            dating_queue.append(int(value))
         except Exception:
-
             pass
 
-    dating_sessions = dating_data.get(
-        "sessions",
-        {}
-    )
-
-    if not isinstance(
-        dating_sessions,
-        dict
-    ):
-
+    dating_sessions = dating_data.get("sessions", {})
+    if not isinstance(dating_sessions, dict):
         dating_sessions = {}
 
     print("=" * 50)
@@ -327,11 +319,6 @@ def load_data():
     print(
         f"[DATA] exceptions : "
         f"{len(intro_exceptions)}"
-    )
-
-    print(
-        f"[DATA] dating queue : "
-        f"{len(dating_queue)}"
     )
 
     print("=" * 50)
@@ -541,6 +528,18 @@ async def manage_role(
 
 # =========================================================
 # 자기소개 파싱
+#
+# 1900~1999
+# -> 1900 남
+# -> 1999 여
+#
+# 2000년대
+# -> 00 남
+# -> 04 ㅇ
+# -> 04 ㄴ
+# -> 04 여
+#
+# 2012년생부터 추방
 # =========================================================
 
 def parse_intro(text):
@@ -577,6 +576,7 @@ def parse_intro(text):
 
         # -------------------------------------------------
         # 2자리 연도
+        # 2000년대만 허용
         # -------------------------------------------------
 
         match = re.search(
@@ -607,6 +607,7 @@ def parse_intro(text):
 
         current_short = current_year % 100
 
+        # 미래 연도 방지
         if short_year > current_short:
 
             return None
@@ -661,6 +662,8 @@ async def apply_intro_roles(
     gender
 ):
 
+    # 기존 역할 제거
+
     for key in (
 
         "unverified",
@@ -681,6 +684,8 @@ async def apply_intro_roles(
 
         )
 
+
+    # 성별
 
     if gender == "남":
 
@@ -706,6 +711,8 @@ async def apply_intro_roles(
 
         )
 
+
+    # 나이
 
     if age_type(year) == "성인":
 
@@ -743,6 +750,7 @@ async def intro_complete(
 ):
 
     member = message.author
+
 
     # -----------------------------------------------------
     # 연령 제한
@@ -1094,17 +1102,24 @@ async def send_kick_review(
     member
 ):
 
+    # 자기소개 제외 회원
+
     if member.id in intro_exceptions:
 
         return
+
+
+    # 이미 대기 중
 
     if member.id in pending_kicks:
 
         return
 
+
     data = member_data(
         member
     )
+
 
     if data.get(
         "intro_completed",
@@ -1113,17 +1128,21 @@ async def send_kick_review(
 
         return
 
+
     log = get_log_channel(
         guild
     )
+
 
     if not log:
 
         return
 
+
     pending_kicks.add(
         member.id
     )
+
 
     try:
 
@@ -1170,7 +1189,9 @@ async def intro_check():
 
         return
 
+
     current = now()
+
 
     for member in guild.members:
 
@@ -1178,13 +1199,18 @@ async def intro_check():
 
             continue
 
+
+        # 제외 회원
+
         if member.id in intro_exceptions:
 
             continue
 
+
         data = member_data(
             member
         )
+
 
         if data.get(
             "intro_completed",
@@ -1193,12 +1219,16 @@ async def intro_check():
 
             continue
 
+
+        # 기존 회원 제외
+
         if data.get(
             "is_existing_member",
             True
         ):
 
             continue
+
 
         joined = parse_dt(
 
@@ -1208,9 +1238,11 @@ async def intro_check():
 
         )
 
+
         if not joined:
 
             continue
+
 
         elapsed = (
 
@@ -1218,9 +1250,11 @@ async def intro_check():
 
         ).total_seconds()
 
+
         if elapsed < INTRO_MINUTES * 60:
 
             continue
+
 
         await send_kick_review(
 
@@ -1244,9 +1278,11 @@ async def on_member_join(
 
         return
 
+
     if member.bot:
 
         return
+
 
     members[str(member.id)] = {
 
@@ -1273,6 +1309,7 @@ async def on_member_join(
 
     }
 
+
     save_json(
 
         FILES["members"],
@@ -1280,6 +1317,7 @@ async def on_member_join(
         members
 
     )
+
 
     await manage_role(
 
@@ -1290,6 +1328,7 @@ async def on_member_join(
         True
 
     )
+
 
     print(
         f"[JOIN] {member}"
@@ -1307,6 +1346,7 @@ def get_profile(
     uid = str(
         user_id
     )
+
 
     if uid not in profiles:
 
@@ -1328,6 +1368,7 @@ def get_profile(
                 None
 
         }
+
 
     return profiles[uid]
 
@@ -1353,6 +1394,7 @@ class ProfileModal(
 
     )
 
+
     location = discord.ui.TextInput(
 
         label="사는 곳",
@@ -1364,6 +1406,7 @@ class ProfileModal(
         max_length=50
 
     )
+
 
     gender = discord.ui.TextInput(
 
@@ -1377,6 +1420,7 @@ class ProfileModal(
 
     )
 
+
     ideal_type = discord.ui.TextInput(
 
         label="이상형",
@@ -1388,6 +1432,7 @@ class ProfileModal(
         max_length=200
 
     )
+
 
     likes = discord.ui.TextInput(
 
@@ -1401,6 +1446,7 @@ class ProfileModal(
 
     )
 
+
     async def on_submit(
         self,
         interaction:
@@ -1410,6 +1456,7 @@ class ProfileModal(
         uid = str(
             interaction.user.id
         )
+
 
         profiles[uid] = {
 
@@ -1435,6 +1482,7 @@ class ProfileModal(
 
         }
 
+
         save_json(
 
             FILES["profiles"],
@@ -1442,6 +1490,7 @@ class ProfileModal(
             profiles
 
         )
+
 
         await interaction.response.send_message(
 
@@ -1460,71 +1509,40 @@ class ProfileModal(
 class ProfileCardView(discord.ui.View):
 
     def __init__(self, owner_id):
-
-        super().__init__(
-            timeout=300
-        )
-
+        super().__init__(timeout=300)
         self.owner_id = owner_id
-
 
     @discord.ui.button(
         label="프로필 편집",
         emoji="✏️",
         style=discord.ButtonStyle.primary
     )
-    async def edit_profile(
-        self,
-        interaction,
-        button
-    ):
-
+    async def edit_profile(self, interaction, button):
         if interaction.user.id != self.owner_id:
-
             await interaction.response.send_message(
-
                 "❌ 본인 프로필만 수정할 수 있습니다.",
-
                 ephemeral=True
-
             )
-
             return
 
-        await interaction.response.send_modal(
-            ProfileModal()
-        )
-
+        await interaction.response.send_modal(ProfileModal())
 
     @discord.ui.button(
         label="소개팅",
         emoji="💗",
         style=discord.ButtonStyle.success
     )
-    async def dating(
-        self,
-        interaction,
-        button
-    ):
-
+    async def dating(self, interaction, button):
         if interaction.user.id != self.owner_id:
-
             await interaction.response.send_message(
-
                 "❌ 본인 프로필에서만 사용할 수 있습니다.",
-
                 ephemeral=True
-
             )
-
             return
 
         await interaction.response.send_message(
-
             "`!소개팅` 명령어로 소개팅에 참가할 수 있어요.",
-
             ephemeral=True
-
         )
 
 
@@ -1544,51 +1562,19 @@ async def profile_command(
         {}
     )
 
-    birth_year = (
-        profile.get("age")
-        or member_info.get("birth_year")
-    )
-
-    gender = (
-        profile.get("gender")
-        or gender_text(
-            member_info.get("gender")
-        )
-    )
-
-    location = (
-        profile.get("location")
-        or "미설정"
-    )
-
-    ideal_type = (
-        profile.get("ideal_type")
-        or "미설정"
-    )
-
-    likes = (
-        profile.get("likes")
-        or "미설정"
-    )
+    birth_year = profile.get("age") or member_info.get("birth_year")
+    gender = profile.get("gender") or gender_text(member_info.get("gender"))
+    location = profile.get("location") or "미설정"
+    ideal_type = profile.get("ideal_type") or "미설정"
+    likes = profile.get("likes") or "미설정"
 
     embed = discord.Embed(
-
-        title=
-        f"💗 {ctx.author.display_name}님의 프로필",
-
+        title=f"💗 {ctx.author.display_name}님의 프로필",
         description=(
-            f"**{birth_year or '나이 미설정'}** · "
-            f"**{gender}**\n"
+            f"**{birth_year or '나이 미설정'}** · **{gender}**\n"
             f"📍 {location}"
         ),
-
-        color=
-        discord.Color.from_rgb(
-            255,
-            82,
-            145
-        )
-
+        color=discord.Color.from_rgb(255, 82, 145)
     )
 
     embed.set_thumbnail(
@@ -1609,26 +1595,17 @@ async def profile_command(
 
     embed.add_field(
         name="💬 소개팅",
-        value=
-        "아래 버튼으로 프로필을 수정하거나 "
-        "소개팅에 참가할 수 있어요.",
+        value="아래 버튼으로 프로필을 수정하거나 소개팅에 참가할 수 있어요.",
         inline=False
     )
 
     embed.set_footer(
-        text=
-        "!프로필편집 으로도 수정할 수 있어요."
+        text="!프로필편집 으로도 수정할 수 있어요."
     )
 
     await ctx.send(
-
         embed=embed,
-
-        view=
-        ProfileCardView(
-            ctx.author.id
-        )
-
+        view=ProfileCardView(ctx.author.id)
     )
 
 
@@ -1643,7 +1620,32 @@ async def profile_edit_command(
     ctx
 ):
 
+    await ctx.author.send(
+        "프로필 편집창을 열어드릴게요."
+    )
+
+    try:
+
+        await ctx.send(
+            f"{ctx.author.mention} 📩 DM을 확인해주세요!",
+            delete_after=5
+        )
+
+    except Exception:
+
+        pass
+
+
+    # -----------------------------------------------------
+    # 주의:
+    # prefix 명령어 자체는 interaction이 아니므로
+    # Discord Modal을 직접 열 수 없습니다.
+    #
+    # 따라서 아래 버튼을 사용합니다.
+    # -----------------------------------------------------
+
     view = ProfileEditView()
+
 
     try:
 
@@ -1720,6 +1722,7 @@ async def profile_delete_command(
         ctx.author.id
     )
 
+
     if uid not in profiles:
 
         await ctx.send(
@@ -1728,10 +1731,12 @@ async def profile_delete_command(
 
         return
 
+
     profiles.pop(
         uid,
         None
     )
+
 
     save_json(
 
@@ -1740,6 +1745,7 @@ async def profile_delete_command(
         profiles
 
     )
+
 
     await ctx.send(
 
@@ -1771,6 +1777,7 @@ async def intro_exception_add(
 
         return
 
+
     if member is None:
 
         await ctx.send(
@@ -1782,9 +1789,11 @@ async def intro_exception_add(
 
         return
 
+
     intro_exceptions.add(
         member.id
     )
+
 
     save_json(
 
@@ -1794,9 +1803,11 @@ async def intro_exception_add(
 
     )
 
+
     pending_kicks.discard(
         member.id
     )
+
 
     await ctx.send(
 
@@ -1828,6 +1839,7 @@ async def intro_exception_remove(
 
         return
 
+
     if member is None:
 
         await ctx.send(
@@ -1839,9 +1851,11 @@ async def intro_exception_remove(
 
         return
 
+
     intro_exceptions.discard(
         member.id
     )
+
 
     save_json(
 
@@ -1850,6 +1864,7 @@ async def intro_exception_remove(
         list(intro_exceptions)
 
     )
+
 
     await ctx.send(
 
@@ -1870,6 +1885,7 @@ async def restricted_access(
 
     channels = []
 
+
     adult_channel = discord.utils.get(
 
         member.guild.text_channels,
@@ -1878,17 +1894,20 @@ async def restricted_access(
 
     )
 
+
     if adult_channel:
 
         channels.append(
             adult_channel
         )
 
+
     body_channel = member.guild.get_channel(
 
         BODY_SHARE_ID
 
     )
+
 
     if isinstance(
 
@@ -1901,6 +1920,7 @@ async def restricted_access(
         channels.append(
             body_channel
         )
+
 
     for channel in channels:
 
@@ -1927,9 +1947,13 @@ async def restricted_access(
 
                 )
 
+
                 overwrite.view_channel = False
+
                 overwrite.send_messages = False
+
                 overwrite.read_message_history = False
+
 
                 await channel.set_permissions(
 
@@ -1962,9 +1986,11 @@ async def apply_warning(
         member.id
     )
 
+
     count = warning_count(
         member
     ) + 1
+
 
     warnings[member_id] = {
 
@@ -1979,6 +2005,7 @@ async def apply_warning(
 
     }
 
+
     save_json(
 
         FILES["warnings"],
@@ -1986,6 +2013,7 @@ async def apply_warning(
         warnings
 
     )
+
 
     await restricted_access(
 
@@ -1995,9 +2023,11 @@ async def apply_warning(
 
     )
 
+
     timeout = WARNING_TIMEOUT.get(
         count
     )
+
 
     if timeout:
 
@@ -2022,6 +2052,7 @@ async def apply_warning(
                 f"[TIMEOUT ERROR] {e}"
             )
 
+
     if count >= 5:
 
         try:
@@ -2038,6 +2069,7 @@ async def apply_warning(
             print(
                 f"[KICK ERROR] {e}"
             )
+
 
     return count
 
@@ -2057,9 +2089,11 @@ async def send_warning_log(
         guild
     )
 
+
     if not log:
 
         return
+
 
     if count >= 5:
 
@@ -2076,6 +2110,7 @@ async def send_warning_log(
     else:
 
         action = "🔒 제한 채널 차단"
+
 
     await log.send(
 
@@ -2122,6 +2157,7 @@ async def warning_command(
 
         return
 
+
     if member is None:
 
         await ctx.send(
@@ -2129,6 +2165,7 @@ async def warning_command(
         )
 
         return
+
 
     if member.bot:
 
@@ -2138,6 +2175,7 @@ async def warning_command(
 
         return
 
+
     count = await apply_warning(
 
         member,
@@ -2145,6 +2183,7 @@ async def warning_command(
         reason
 
     )
+
 
     await send_warning_log(
 
@@ -2157,6 +2196,7 @@ async def warning_command(
         reason
 
     )
+
 
     if count >= 5:
 
@@ -2172,7 +2212,9 @@ async def warning_command(
         text = (
 
             f"⚠️ {member.mention}님\n"
+
             f"경고 {count}회\n"
+
             f"24시간 타임아웃"
 
         )
@@ -2182,7 +2224,9 @@ async def warning_command(
         text = (
 
             f"⚠️ {member.mention}님\n"
+
             f"경고 {count}회\n"
+
             f"1시간 타임아웃"
 
         )
@@ -2192,10 +2236,13 @@ async def warning_command(
         text = (
 
             f"⚠️ {member.mention}님\n"
+
             f"경고 {count}회 누적\n"
+
             f"제한 채널 차단"
 
         )
+
 
     await ctx.send(
         text
@@ -2228,6 +2275,7 @@ async def warning_list(
 
         return
 
+
     if member:
 
         data = warnings.get(
@@ -2237,6 +2285,7 @@ async def warning_list(
             {}
 
         )
+
 
         await ctx.send(
 
@@ -2252,6 +2301,7 @@ async def warning_list(
 
         return
 
+
     if not warnings:
 
         await ctx.send(
@@ -2260,7 +2310,9 @@ async def warning_list(
 
         return
 
+
     result = []
+
 
     for uid, data in warnings.items():
 
@@ -2274,6 +2326,7 @@ async def warning_list(
 
             m = None
 
+
         name = (
 
             m.mention
@@ -2282,12 +2335,14 @@ async def warning_list(
 
         )
 
+
         result.append(
 
             f"• {name} : "
             f"`{data.get('count', 0)}회`"
 
         )
+
 
     await ctx.send(
 
@@ -2321,17 +2376,21 @@ async def warning_remove(
 
         return
 
+
     if member is None:
 
         return
+
 
     uid = str(
         member.id
     )
 
+
     count = warning_count(
         member
     )
+
 
     if count <= 0:
 
@@ -2341,7 +2400,9 @@ async def warning_remove(
 
         return
 
+
     count -= 1
+
 
     if count <= 0:
 
@@ -2350,6 +2411,7 @@ async def warning_remove(
             None
         )
 
+
         await restricted_access(
 
             member,
@@ -2357,6 +2419,7 @@ async def warning_remove(
             True
 
         )
+
 
         try:
 
@@ -2394,6 +2457,7 @@ async def warning_remove(
 
         }
 
+
     save_json(
 
         FILES["warnings"],
@@ -2401,6 +2465,7 @@ async def warning_remove(
         warnings
 
     )
+
 
     await ctx.send(
 
@@ -2434,9 +2499,11 @@ async def warning_reset(
 
         return
 
+
     if member is None:
 
         return
+
 
     warnings.pop(
 
@@ -2446,6 +2513,7 @@ async def warning_reset(
 
     )
 
+
     save_json(
 
         FILES["warnings"],
@@ -2454,6 +2522,7 @@ async def warning_reset(
 
     )
 
+
     await restricted_access(
 
         member,
@@ -2461,6 +2530,7 @@ async def warning_reset(
         True
 
     )
+
 
     try:
 
@@ -2477,6 +2547,7 @@ async def warning_reset(
 
         pass
 
+
     await ctx.send(
 
         f"✅ {member.mention} "
@@ -2490,1666 +2561,579 @@ async def warning_reset(
 # =========================================================
 
 DATING_CATEGORY_NAME = "💗・소개팅"
-
 DATING_CHANNEL_PREFIX = "💞・소개팅"
-
 DATING_TIMEOUT_MINUTES = 10
 
-
 DATING_QUESTIONS = [
-
     "최근에 가장 재밌었던 일은?",
-
     "주말에 보통 뭐 하면서 보내요?",
-
     "요즘 가장 자주 듣는 노래는?",
-
     "같이 하루를 보낸다면 어디에 가고 싶어요?",
-
     "친해질 때 가장 중요하다고 생각하는 건?",
-
     "게임을 한다면 어떤 게임을 같이 하고 싶어요?",
-
     "여행을 간다면 바다와 산 중 어디가 좋아요?",
-
     "첫인상과 지금 느낌이 달라졌나요?"
-
 ]
-
 
 DATING_GAMES = [
-
     "🎲 가위바위보 한 판 해보기",
-
     "🎯 서로에게 10초 안에 질문 하나씩 하기",
-
     "🧠 초성: ㅇㅅㅎ (상대가 맞혀보기)",
-
     "💭 서로의 첫인상 한 단어로 말하기",
-
     "⚖️ 밸런스: 바다 여행 vs 도시 여행"
-
 ]
 
 
-# =========================================================
-# 소개팅 데이터 저장
-# =========================================================
-
 def save_dating_data():
-
     save_json(
-
         FILES["dating"],
-
         {
-
-            "queue":
-                dating_queue,
-
-            "sessions":
-                dating_sessions
-
+            "queue": dating_queue,
+            "sessions": dating_sessions
         }
-
     )
 
 
-# =========================================================
-# 현재 소개팅 세션 확인
-# =========================================================
-
-def dating_member_session(
-    member_id
-):
-
+def dating_member_session(member_id):
     for session_id, session in dating_sessions.items():
-
-        if session.get(
-            "status"
-        ) != "active":
-
+        if session.get("status") != "active":
             continue
-
-        if member_id in session.get(
-            "members",
-            []
-        ):
-
-            return (
-                session_id,
-                session
-            )
-
-    return (
-        None,
-        None
-    )
+        if member_id in session.get("members", []):
+            return session_id, session
+    return None, None
 
 
-# =========================================================
-# 소개팅 연령 그룹
-#
-# adult
-# 2007년생 이하
-#
-# minor
-# 2008~2011년생
-#
-# None
-# 자기소개 미완료 / 이용 제한 대상
-# =========================================================
-
-def get_dating_age_group(
-    member
-):
-
+def is_adult_for_dating(member):
     if member.bot:
-
-        return None
+        return False
 
     data = members.get(
-
         str(member.id),
-
         {}
-
     )
 
-    if not data.get(
-        "intro_completed",
-        False
-    ):
+    birth_year = data.get("birth_year")
+    if not data.get("intro_completed") or not birth_year:
+        return False
 
-        return None
+    if birth_year > ADULT_CUTOFF:
+        return False
 
-    birth_year = data.get(
-        "birth_year"
-    )
+    adult_role = member.guild.get_role(ROLES["adult"])
+    if adult_role and adult_role not in member.roles:
+        return False
 
-    if not birth_year:
-
-        return None
-
-    try:
-
-        birth_year = int(
-            birth_year
-        )
-
-    except Exception:
-
-        return None
-
-    # -----------------------------------------------------
-    # 성인
-    # -----------------------------------------------------
-
-    if birth_year <= ADULT_CUTOFF:
-
-        adult_role = member.guild.get_role(
-            ROLES["adult"]
-        )
-
-        if adult_role and adult_role not in member.roles:
-
-            return None
-
-        return "adult"
-
-    # -----------------------------------------------------
-    # 미성년자
-    #
-    # 2008~2011
-    # -----------------------------------------------------
-
-    if birth_year < MIN_ALLOWED_BIRTH_YEAR:
-
-        minor_role = member.guild.get_role(
-            ROLES["minor"]
-        )
-
-        if minor_role and minor_role not in member.roles:
-
-            return None
-
-        return "minor"
-
-    # -----------------------------------------------------
-    # 2012년생부터는 이용 제한
-    # -----------------------------------------------------
-
-    return None
+    return True
 
 
-# =========================================================
-# 소개팅 참가 가능 여부
-# =========================================================
-
-def can_join_dating(
-    member
-):
-
-    group = get_dating_age_group(
-        member
-    )
-
-    return group is not None
-
-
-# =========================================================
-# 소개팅 카테고리
-# =========================================================
-
-async def get_dating_category(
-    guild
-):
-
+async def get_dating_category(guild):
     category = discord.utils.get(
-
         guild.categories,
-
         name=DATING_CATEGORY_NAME
-
     )
 
     if category:
-
         return category
 
     try:
-
         return await guild.create_category(
-
             DATING_CATEGORY_NAME,
-
-            reason=
-            "소개팅 콘텐츠 카테고리 생성"
-
+            reason="소개팅 콘텐츠 카테고리 생성"
         )
-
     except Exception as e:
-
-        print(
-            f"[DATING CATEGORY ERROR] {e}"
-        )
-
+        print(f"[DATING CATEGORY ERROR] {e}")
         return None
 
 
-# =========================================================
-# 소개팅 채널 생성
-# =========================================================
-
-async def create_dating_channel(
-    guild,
-    member_a,
-    member_b
-):
-
-    category = await get_dating_category(
-        guild
-    )
-
+async def create_dating_channel(guild, member_a, member_b):
+    category = await get_dating_category(guild)
     if not category:
-
         return None
 
     session_id = uuid.uuid4().hex[:6].upper()
 
     overwrites = {
-
-        guild.default_role:
-            discord.PermissionOverwrite(
-                view_channel=False
-            ),
-
-        member_a:
-            discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                attach_files=True,
-                embed_links=True
-            ),
-
-        member_b:
-            discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                attach_files=True,
-                embed_links=True
-            )
-
+        guild.default_role: discord.PermissionOverwrite(
+            view_channel=False
+        ),
+        member_a: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            attach_files=True,
+            embed_links=True
+        ),
+        member_b: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            attach_files=True,
+            embed_links=True
+        )
     }
 
     if guild.me:
-
         overwrites[guild.me] = discord.PermissionOverwrite(
-
             view_channel=True,
-
             send_messages=True,
-
             read_message_history=True,
-
             manage_channels=True,
-
             manage_messages=True
-
         )
 
     try:
-
         channel = await guild.create_text_channel(
-
             f"{DATING_CHANNEL_PREFIX}-{session_id}",
-
             category=category,
-
             overwrites=overwrites,
-
-            reason=
-            "소개팅 매칭 전용 채널 생성"
-
+            reason="소개팅 매칭 전용 채널 생성"
         )
-
     except Exception as e:
-
-        print(
-            f"[DATING CHANNEL ERROR] {e}"
-        )
-
+        print(f"[DATING CHANNEL ERROR] {e}")
         return None
 
     session = {
-
-        "channel_id":
-            channel.id,
-
-        "members":
-            [
-                member_a.id,
-                member_b.id
-            ],
-
-        "status":
-            "active",
-
-        "created_at":
-            iso(now()),
-
-        "likes":
-            [],
-
-        "session_id":
-            session_id
-
+        "channel_id": channel.id,
+        "members": [member_a.id, member_b.id],
+        "status": "active",
+        "created_at": iso(now()),
+        "likes": [],
+        "session_id": session_id
     }
 
     dating_sessions[session_id] = session
-
     save_dating_data()
 
-    return (
-        session_id,
-        channel
-    )
+    return session_id, channel
 
 
-# =========================================================
-# 상대 프로필
-# =========================================================
-
-def dating_embed_for_member(
-    viewer,
-    opponent,
-    session
-):
-
-    profile = get_profile(
-        opponent.id
-    )
-
+def dating_embed_for_member(viewer, opponent, session):
+    profile = get_profile(opponent.id)
     info = members.get(
-
         str(opponent.id),
-
         {}
-
     )
 
-    birth_year = (
-        profile.get("age")
-        or info.get("birth_year")
-        or "미설정"
-    )
-
-    gender = (
-        profile.get("gender")
-        or gender_text(
-            info.get("gender")
-        )
-    )
-
-    location = (
-        profile.get("location")
-        or "미설정"
-    )
-
-    ideal_type = (
-        profile.get("ideal_type")
-        or "미설정"
-    )
-
-    likes = (
-        profile.get("likes")
-        or "미설정"
-    )
+    birth_year = profile.get("age") or info.get("birth_year") or "미설정"
+    gender = profile.get("gender") or gender_text(info.get("gender"))
+    location = profile.get("location") or "미설정"
+    ideal_type = profile.get("ideal_type") or "미설정"
+    likes = profile.get("likes") or "미설정"
 
     embed = discord.Embed(
-
-        title=
-        f"💗 소개팅 · {opponent.display_name}",
-
+        title=f"💗 소개팅 · {opponent.display_name}",
         description=(
-
-            f"**{birth_year}** · "
-            f"**{gender}**\n"
-
+            f"**{birth_year}** · **{gender}**\n"
             f"📍 {location}\n\n"
-
-            f"♡ **이상형**\n"
-            f"{ideal_type}\n\n"
-
-            f"🎮 **좋아하는 것**\n"
-            f"{likes}"
-
+            f"♡ **이상형**\n{ideal_type}\n\n"
+            f"🎮 **좋아하는 것**\n{likes}"
         ),
-
-        color=
-        discord.Color.from_rgb(
-            255,
-            82,
-            145
-        )
-
+        color=discord.Color.from_rgb(255, 82, 145)
     )
-
-    embed.set_thumbnail(
-        url=opponent.display_avatar.url
-    )
-
+    embed.set_thumbnail(url=opponent.display_avatar.url)
     embed.set_footer(
-
-        text=
-        f"소개팅 세션 · "
-        f"{session.get('session_id', '')}"
-
+        text=f"소개팅 세션 · {session.get('session_id', '')}"
     )
-
     return embed
 
 
-# =========================================================
-# 소개팅 종료
-# =========================================================
-
-async def finish_dating_session(
-    session_id,
-    reason="소개팅 종료"
-):
-
-    session = dating_sessions.get(
-        session_id
-    )
-
+async def finish_dating_session(session_id, reason="소개팅 종료"):
+    session = dating_sessions.get(session_id)
     if not session:
-
         return
 
     session["status"] = "ended"
-
-    session["ended_at"] = iso(
-        now()
-    )
-
+    session["ended_at"] = iso(now())
     save_dating_data()
 
-    guild = bot.get_guild(
-        GUILD_ID
-    )
-
+    guild = bot.get_guild(GUILD_ID)
     if not guild:
-
         return
 
-    channel = guild.get_channel(
-        session.get("channel_id")
-    )
-
+    channel = guild.get_channel(session.get("channel_id"))
     if channel:
-
         try:
-
             await channel.send(
-
-                f"🚪 **소개팅이 종료되었습니다.**\n"
-                f"사유: `{reason}`\n\n"
-                f"이 채널은 잠시 후 정리됩니다."
-
+                f"🚪 **소개팅이 종료되었습니다.**\n사유: `{reason}`\n\n"
+                "이 채널은 잠시 후 정리됩니다."
             )
-
             await asyncio.sleep(5)
-
         except Exception:
-
             pass
 
         try:
-
             await channel.delete(
-
                 reason=reason
-
             )
-
         except Exception as e:
-
-            print(
-                f"[DATING DELETE ERROR] {e}"
-            )
+            print(f"[DATING DELETE ERROR] {e}")
 
 
-# =========================================================
-# 소개팅 신고
-# =========================================================
-
-class DatingReportModal(
-    discord.ui.Modal,
-    title="소개팅 신고"
-):
+class DatingReportModal(discord.ui.Modal, title="소개팅 신고"):
 
     reason = discord.ui.TextInput(
-
         label="신고 사유",
-
-        placeholder=
-        "신고할 내용을 적어주세요.",
-
+        placeholder="신고할 내용을 적어주세요.",
         required=True,
-
         max_length=500
-
     )
 
-    async def on_submit(
-        self,
-        interaction
-    ):
+    async def on_submit(self, interaction):
+        session_id = getattr(self, "session_id", None)
+        session = dating_sessions.get(session_id) if session_id else None
 
-        session_id = getattr(
-
-            self,
-
-            "session_id",
-
-            None
-
-        )
-
-        session = (
-            dating_sessions.get(
-                session_id
-            )
-            if session_id
-            else None
-        )
-
-        log = get_log_channel(
-            interaction.guild
-        )
-
+        log = get_log_channel(interaction.guild)
         if log:
-
             await log.send(
-
                 f"🚨 **소개팅 신고**\n"
-
-                f"신고자: "
-                f"{interaction.user.mention}\n"
-
-                f"세션: "
-                f"`{session_id or '알 수 없음'}`\n"
-
-                f"사유: "
-                f"`{self.reason.value}`"
-
+                f"신고자: {interaction.user.mention}\n"
+                f"세션: `{session_id or '알 수 없음'}`\n"
+                f"사유: `{self.reason.value}`"
             )
 
         await interaction.response.send_message(
-
-            "✅ 신고가 접수되었습니다. "
-            "관리자에게 전달했어요.",
-
+            "✅ 신고가 접수되었습니다. 관리자에게 전달했어요.",
             ephemeral=True
-
         )
 
 
-# =========================================================
-# 소개팅 진행 버튼
-# =========================================================
+class DatingView(discord.ui.View):
 
-class DatingView(
-    discord.ui.View
-):
-
-    def __init__(
-        self,
-        session_id
-    ):
-
-        super().__init__(
-            timeout=None
-        )
-
+    def __init__(self, session_id):
+        super().__init__(timeout=None)
         self.session_id = session_id
-
         for item in self.children:
-
-            if isinstance(
-                item,
-                discord.ui.Button
-            ):
-
-                item.custom_id = (
-
-                    f"dating:"
-                    f"{session_id}:"
-                    f"{item.custom_id.split(':')[-1]}"
-
-                )
-
+            if isinstance(item, discord.ui.Button):
+                item.custom_id = f"dating:{session_id}:{item.custom_id.split(':')[-1]}"
 
     def get_session(self):
+        return dating_sessions.get(self.session_id)
 
-        return dating_sessions.get(
-            self.session_id
-        )
-
-
-    def get_opponent(
-        self,
-        user_id
-    ):
-
+    def get_opponent(self, user_id):
         session = self.get_session()
-
         if not session:
-
             return None
-
         opponent_id = next(
-
-            (
-                uid
-
-                for uid in session.get(
-                    "members",
-                    []
-                )
-
-                if uid != user_id
-
-            ),
-
+            (uid for uid in session.get("members", []) if uid != user_id),
             None
-
         )
-
         if opponent_id is None:
-
             return None
+        guild = bot.get_guild(GUILD_ID)
+        return guild.get_member(opponent_id) if guild else None
 
-        guild = bot.get_guild(
-            GUILD_ID
-        )
-
-        return (
-
-            guild.get_member(
-                opponent_id
-            )
-
-            if guild
-
-            else None
-
-        )
-
-
-    async def interaction_check(
-        self,
-        interaction
-    ):
-
+    async def interaction_check(self, interaction):
         session = self.get_session()
-
-        if not session or session.get(
-            "status"
-        ) != "active":
-
+        if not session or session.get("status") != "active":
             await interaction.response.send_message(
-
                 "❌ 이미 종료된 소개팅입니다.",
-
                 ephemeral=True
-
             )
-
             return False
 
-        if interaction.user.id not in session.get(
-            "members",
-            []
-        ):
-
+        if interaction.user.id not in session.get("members", []):
             await interaction.response.send_message(
-
                 "❌ 이 소개팅의 참가자만 사용할 수 있습니다.",
-
                 ephemeral=True
-
             )
-
             return False
 
         return True
 
-
     @discord.ui.button(
-
         label="상대정보",
-
-        style=
-        discord.ButtonStyle.secondary,
-
+        style=discord.ButtonStyle.secondary,
         custom_id="dating:info"
-
     )
-    async def info(
-        self,
-        interaction,
-        button
-    ):
-
-        opponent = self.get_opponent(
-            interaction.user.id
-        )
-
+    async def info(self, interaction, button):
+        opponent = self.get_opponent(interaction.user.id)
         session = self.get_session()
-
         if not opponent:
-
-            await interaction.response.send_message(
-
-                "❌ 상대를 찾을 수 없습니다.",
-
-                ephemeral=True
-
-            )
-
+            await interaction.response.send_message("❌ 상대를 찾을 수 없습니다.", ephemeral=True)
             return
-
         await interaction.response.send_message(
-
-            embed=
-            dating_embed_for_member(
-
-                interaction.user,
-
-                opponent,
-
-                session
-
-            ),
-
+            embed=dating_embed_for_member(interaction.user, opponent, session),
             ephemeral=True
-
         )
 
-
     @discord.ui.button(
-
         label="오늘의 질문",
-
-        style=
-        discord.ButtonStyle.secondary,
-
+        style=discord.ButtonStyle.secondary,
         custom_id="dating:question"
-
     )
-    async def question(
-        self,
-        interaction,
-        button
-    ):
-
+    async def question(self, interaction, button):
         await interaction.response.send_message(
-
-            f"💭 **오늘의 질문**\n\n"
-            f"「{random.choice(DATING_QUESTIONS)}」",
-
+            f"💭 **오늘의 질문**\n\n「{random.choice(DATING_QUESTIONS)}」",
             ephemeral=False
-
         )
-
 
     @discord.ui.button(
-
         label="💚 호감 보내기",
-
-        style=
-        discord.ButtonStyle.success,
-
+        style=discord.ButtonStyle.success,
         custom_id="dating:like"
-
     )
-    async def like(
-        self,
-        interaction,
-        button
-    ):
-
+    async def like(self, interaction, button):
         session = self.get_session()
-
-        likes = session.setdefault(
-            "likes",
-            []
-        )
+        likes = session.setdefault("likes", [])
 
         if interaction.user.id not in likes:
-
-            likes.append(
-                interaction.user.id
-            )
-
+            likes.append(interaction.user.id)
             save_dating_data()
 
-        opponent = self.get_opponent(
-            interaction.user.id
-        )
+        opponent = self.get_opponent(interaction.user.id)
 
         if opponent and opponent.id in likes:
-
             await interaction.response.send_message(
-
                 f"🎉 **서로 호감이 확인됐어요!**\n\n"
-
-                f"💗 {interaction.user.mention} × "
-                f"{opponent.mention}\n"
-
-                f"두 분 모두 서로에게 호감을 보냈습니다!",
-
+                f"💗 {interaction.user.mention} × {opponent.mention}\n"
+                "두 분 모두 서로에게 호감을 보냈습니다!",
                 ephemeral=False
-
             )
 
             try:
-
                 await interaction.user.send(
-
-                    f"💗 소개팅 결과\n"
-                    f"{opponent.display_name}님과 "
-                    f"서로 호감이 확인됐어요!"
-
+                    f"💗 소개팅 결과\n{opponent.display_name}님과 서로 호감이 확인됐어요!"
                 )
-
             except Exception:
-
                 pass
 
             try:
-
                 await opponent.send(
-
-                    f"💗 소개팅 결과\n"
-                    f"{interaction.user.display_name}님과 "
-                    f"서로 호감이 확인됐어요!"
-
+                    f"💗 소개팅 결과\n{interaction.user.display_name}님과 서로 호감이 확인됐어요!"
                 )
-
             except Exception:
-
                 pass
-
         else:
-
             await interaction.response.send_message(
-
-                "💚 호감을 보냈어요. "
-                "상대방도 호감을 보내면 서로 매칭됩니다!",
-
+                "💚 호감을 보냈어요. 상대방도 호감을 보내면 서로 매칭됩니다!",
                 ephemeral=True
-
             )
 
-
     @discord.ui.button(
-
         label="🎮 미니게임",
-
-        style=
-        discord.ButtonStyle.primary,
-
+        style=discord.ButtonStyle.primary,
         custom_id="dating:game"
-
     )
-    async def game(
-        self,
-        interaction,
-        button
-    ):
-
+    async def game(self, interaction, button):
         await interaction.response.send_message(
-
-            f"🎮 **미니게임**\n\n"
-            f"{random.choice(DATING_GAMES)}",
-
+            f"🎮 **미니게임**\n\n{random.choice(DATING_GAMES)}",
             ephemeral=False
-
         )
 
-
     @discord.ui.button(
-
         label="신고/차단",
-
-        style=
-        discord.ButtonStyle.secondary,
-
+        style=discord.ButtonStyle.secondary,
         custom_id="dating:report"
-
     )
-    async def report(
-        self,
-        interaction,
-        button
-    ):
-
+    async def report(self, interaction, button):
         modal = DatingReportModal()
-
         modal.session_id = self.session_id
-
-        await interaction.response.send_modal(
-            modal
-        )
-
+        await interaction.response.send_modal(modal)
 
     @discord.ui.button(
-
         label="즉시 종료",
-
-        style=
-        discord.ButtonStyle.danger,
-
+        style=discord.ButtonStyle.danger,
         custom_id="dating:end"
-
     )
-    async def end(
-        self,
-        interaction,
-        button
-    ):
-
+    async def end(self, interaction, button):
         await interaction.response.send_message(
-
             "🚪 소개팅을 종료할게요.",
-
             ephemeral=True
-
         )
-
         await finish_dating_session(
-
             self.session_id,
-
             "참가자에 의해 종료"
-
         )
 
 
-# =========================================================
-# 소개팅 대기실
-# =========================================================
-
-class DatingLobbyView(
-    discord.ui.View
-):
+class DatingLobbyView(discord.ui.View):
 
     def __init__(self):
-
-        super().__init__(
-            timeout=None
-        )
-
-
-    # =====================================================
-    # 참가
-    # =====================================================
+        super().__init__(timeout=None)
 
     @discord.ui.button(
-
         label="💗 소개팅 참가",
-
-        style=
-        discord.ButtonStyle.success,
-
+        style=discord.ButtonStyle.success,
         custom_id="dating:lobby_join"
-
     )
-    async def join(
-        self,
-        interaction,
-        button
-    ):
-
+    async def join(self, interaction, button):
         member = interaction.user
 
-        # -------------------------------------------------
-        # 연령 그룹 확인
-        # -------------------------------------------------
-
-        age_group = get_dating_age_group(
-            member
-        )
-
-        if age_group is None:
-
+        if not is_adult_for_dating(member):
             await interaction.response.send_message(
-
-                "❌ 자기소개를 완료한 회원만 "
-                "소개팅에 참가할 수 있어요.\n\n"
-
-                "2012년생부터는 서버 이용이 제한되며,\n"
-
-                "소개팅은 성인끼리 / 미성년자끼리 "
-                "같은 연령 그룹에서만 매칭됩니다.",
-
+                "🔞 소개팅은 자기소개를 완료한 성인 회원만 참가할 수 있어요.",
                 ephemeral=True
-
             )
-
             return
 
-
-        # -------------------------------------------------
-        # 이미 진행 중인지 확인
-        # -------------------------------------------------
-
-        active_id, _ = dating_member_session(
-            member.id
-        )
-
+        active_id, _ = dating_member_session(member.id)
         if active_id:
-
             await interaction.response.send_message(
-
                 "❌ 이미 진행 중인 소개팅이 있어요.",
-
                 ephemeral=True
-
             )
-
             return
-
-
-        # -------------------------------------------------
-        # 이미 대기 중인지 확인
-        # -------------------------------------------------
 
         if member.id in dating_queue:
-
             await interaction.response.send_message(
-
                 "⏳ 이미 소개팅 대기열에 들어가 있어요.",
-
                 ephemeral=True
-
             )
-
             return
 
+        dating_queue.append(member.id)
 
-        # -------------------------------------------------
-        # 오래된 / 잘못된 대기자 정리
-        # -------------------------------------------------
-
-        cleaned_queue = []
-
-        for uid in dating_queue:
-
-            waiting_member = interaction.guild.get_member(
-                uid
-            )
-
-            if not waiting_member:
-
-                continue
-
-            waiting_group = get_dating_age_group(
-                waiting_member
-            )
-
-            if waiting_group is None:
-
-                continue
-
-            if dating_member_session(
-                uid
-            )[0]:
-
-                continue
-
-            cleaned_queue.append(
-                uid
-            )
-
-        dating_queue.clear()
-
-        dating_queue.extend(
-            cleaned_queue
-        )
-
-
-        # -------------------------------------------------
-        # 같은 연령 그룹만 후보
-        # -------------------------------------------------
-
-        opponent_candidates = []
-
-        for uid in dating_queue:
-
-            if uid == member.id:
-
-                continue
-
-            waiting_member = interaction.guild.get_member(
-                uid
-            )
-
-            if not waiting_member:
-
-                continue
-
-            waiting_group = get_dating_age_group(
-                waiting_member
-            )
-
-            if waiting_group == age_group:
-
-                opponent_candidates.append(
-                    uid
-                )
-
-
-        # -------------------------------------------------
-        # 현재 회원을 대기열에 추가
-        # -------------------------------------------------
-
-        dating_queue.append(
-            member.id
-        )
-
-
-        # -------------------------------------------------
-        # 같은 연령 그룹에서 랜덤 선택
-        # -------------------------------------------------
-
-        opponent_id = None
-
-        if opponent_candidates:
-
-            opponent_id = random.choice(
-                opponent_candidates
-            )
-
-
-        # -------------------------------------------------
-        # 상대가 없으면 대기
-        # -------------------------------------------------
+        opponent_id = random.choice(
+            [uid for uid in dating_queue if uid != member.id]
+        ) if len(dating_queue) >= 2 else None
 
         if opponent_id is None:
-
             save_dating_data()
-
-            group_text = (
-                "성인"
-                if age_group == "adult"
-                else "미성년자"
-            )
-
             await interaction.response.send_message(
-
-                f"💗 소개팅 대기열에 들어갔어요!\n\n"
-
-                f"현재 그룹: `{group_text}`\n"
-
-                f"현재 대기자: "
-                f"`{len(dating_queue)}명`\n\n"
-
-                f"같은 연령 그룹의 참가자가 들어오면 "
-                f"자동으로 랜덤 매칭됩니다.",
-
+                f"💗 소개팅 대기열에 들어갔어요!\n"
+                f"현재 대기자: `{len(dating_queue)}명`\n\n"
+                "상대가 참가하면 자동으로 매칭됩니다.",
                 ephemeral=True
-
             )
-
             return
 
+        dating_queue.remove(member.id)
+        dating_queue.remove(opponent_id)
 
-        # -------------------------------------------------
-        # 상대 제거
-        # -------------------------------------------------
-
-        if member.id in dating_queue:
-
-            dating_queue.remove(
-                member.id
-            )
-
-        if opponent_id in dating_queue:
-
-            dating_queue.remove(
-                opponent_id
-            )
-
-
-        # -------------------------------------------------
-        # 상대 가져오기
-        # -------------------------------------------------
-
-        opponent = interaction.guild.get_member(
-            opponent_id
-        )
-
+        opponent = interaction.guild.get_member(opponent_id)
         if not opponent:
-
+            if opponent_id not in dating_queue:
+                dating_queue.append(opponent_id)
             save_dating_data()
-
             await interaction.response.send_message(
-
-                "⏳ 상대를 찾지 못해서 "
-                "다시 대기열을 확인해주세요.",
-
+                "⏳ 상대를 찾지 못해서 다시 대기열로 돌렸어요.",
                 ephemeral=True
-
             )
-
             return
-
-
-        # -------------------------------------------------
-        # 마지막 연령 그룹 안전 확인
-        # -------------------------------------------------
-
-        opponent_group = get_dating_age_group(
-            opponent
-        )
-
-        if opponent_group != age_group:
-
-            dating_queue.append(
-                member.id
-            )
-
-            save_dating_data()
-
-            await interaction.response.send_message(
-
-                "⏳ 같은 연령 그룹의 상대가 아니어서 "
-                "다시 대기 중입니다.",
-
-                ephemeral=True
-
-            )
-
-            return
-
-
-        # -------------------------------------------------
-        # 채널 생성
-        # -------------------------------------------------
 
         result = await create_dating_channel(
-
             interaction.guild,
-
             member,
-
             opponent
-
         )
 
         if not result:
-
-            dating_queue.extend(
-                [
-                    member.id,
-                    opponent.id
-                ]
-            )
-
+            dating_queue.extend([member.id, opponent.id])
             save_dating_data()
-
             await interaction.response.send_message(
-
-                "❌ 소개팅 채널을 만들지 못했습니다.\n"
-                "봇의 채널 관리 권한을 확인해주세요.",
-
+                "❌ 소개팅 채널을 만들지 못했습니다. 봇의 채널 관리 권한을 확인해주세요.",
                 ephemeral=True
-
             )
-
             return
-
 
         session_id, channel = result
 
-
-        # -------------------------------------------------
-        # 참가자에게 알림
-        # -------------------------------------------------
-
         await interaction.response.send_message(
-
-            f"💗 **소개팅 매칭 완료!**\n"
-
-            f"{channel.mention} 으로 이동해주세요.",
-
+            f"💗 **소개팅 매칭 완료!**\n{channel.mention} 으로 이동해주세요.",
             ephemeral=True
-
         )
-
 
         try:
-
             await opponent.send(
-
-                f"💗 소개팅 매칭이 완료됐어요!\n"
-
-                f"{channel.mention} 에서 "
-                f"상대방과 대화해보세요."
-
+                f"💗 소개팅 매칭이 완료됐어요!\n{channel.mention} 에서 상대방과 대화해보세요."
             )
-
         except Exception:
-
             pass
 
-
-        # -------------------------------------------------
-        # 전용 채널 메시지
-        # -------------------------------------------------
-
-        group_text = (
-            "성인"
-            if age_group == "adult"
-            else "미성년자"
-        )
-
         await channel.send(
-
             f"💗 **소개팅 매칭 완료!**\n\n"
-
-            f"{member.mention} × "
-            f"{opponent.mention}\n\n"
-
-            f"연령 그룹: `{group_text}`\n\n"
-
-            f"이 채널은 두 분과 봇만 볼 수 있는 "
-            f"전용 채팅방입니다.\n\n"
-
-            f"💭 **첫 질문:**\n"
-            f"「{random.choice(DATING_QUESTIONS)}」",
-
-            view=
-            DatingView(
-                session_id
-            )
-
+            f"{member.mention} × {opponent.mention}\n\n"
+            "이 채널은 두 분과 봇만 볼 수 있는 전용 채팅방입니다.\n"
+            f"💭 **첫 질문:** 「{random.choice(DATING_QUESTIONS)}」",
+            view=DatingView(session_id)
         )
-
-        save_dating_data()
-
-
-    # =====================================================
-    # 대기 취소
-    # =====================================================
 
     @discord.ui.button(
-
         label="❌ 대기 취소",
-
-        style=
-        discord.ButtonStyle.secondary,
-
+        style=discord.ButtonStyle.secondary,
         custom_id="dating:lobby_leave"
-
     )
-    async def leave(
-        self,
-        interaction,
-        button
-    ):
-
+    async def leave(self, interaction, button):
         if interaction.user.id not in dating_queue:
-
             await interaction.response.send_message(
-
                 "❌ 현재 소개팅 대기열에 들어가 있지 않아요.",
-
                 ephemeral=True
-
             )
-
             return
 
-        dating_queue.remove(
-            interaction.user.id
-        )
-
+        dating_queue.remove(interaction.user.id)
         save_dating_data()
 
         await interaction.response.send_message(
-
             "✅ 소개팅 대기열에서 나왔어요.",
-
             ephemeral=True
-
         )
-
-
-    # =====================================================
-    # 내 프로필
-    # =====================================================
 
     @discord.ui.button(
-
         label="👤 내 프로필",
-
-        style=
-        discord.ButtonStyle.primary,
-
+        style=discord.ButtonStyle.primary,
         custom_id="dating:lobby_profile"
-
     )
-    async def profile(
-        self,
-        interaction,
-        button
-    ):
-
-        profile = get_profile(
-            interaction.user.id
-        )
-
-        info = members.get(
-
-            str(interaction.user.id),
-
-            {}
-
-        )
+    async def profile(self, interaction, button):
+        profile = get_profile(interaction.user.id)
+        info = members.get(str(interaction.user.id), {})
 
         embed = discord.Embed(
-
-            title=
-            f"👤 {interaction.user.display_name}",
-
+            title=f"👤 {interaction.user.display_name}",
             description=(
-
-                f"**"
-                f"{profile.get('age') "
-                f"or info.get('birth_year') "
-                f"or '미설정'}"
-                f"** · "
-
-                f"**"
-                f"{profile.get('gender') "
-                f"or gender_text(info.get('gender'))}"
-                f"**\n"
-
-                f"📍 "
-                f"{profile.get('location') "
-                f"or '미설정'}\n\n"
-
-                f"♡ 이상형\n"
-                f"{profile.get('ideal_type') "
-                f"or '미설정'}\n\n"
-
-                f"🎮 좋아하는 것\n"
-                f"{profile.get('likes') "
-                f"or '미설정'}"
-
+                f"**{profile.get('age') or info.get('birth_year') or '미설정'}** · "
+                f"**{profile.get('gender') or gender_text(info.get('gender'))}**\n"
+                f"📍 {profile.get('location') or '미설정'}\n\n"
+                f"♡ 이상형\n{profile.get('ideal_type') or '미설정'}\n\n"
+                f"🎮 좋아하는 것\n{profile.get('likes') or '미설정'}"
             ),
-
-            color=
-            discord.Color.from_rgb(
-                255,
-                82,
-                145
-            )
-
+            color=discord.Color.from_rgb(255, 82, 145)
         )
-
-        embed.set_thumbnail(
-
-            url=
-            interaction.user.display_avatar.url
-
-        )
+        embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
         await interaction.response.send_message(
-
             embed=embed,
-
             ephemeral=True
-
         )
 
-
-# =========================================================
-# !소개팅
-# =========================================================
 
 @bot.command(
     name="소개팅"
 )
-async def dating_command(
-    ctx
-):
-
-    age_group = get_dating_age_group(
-        ctx.author
-    )
-
-    if age_group is None:
-
+async def dating_command(ctx):
+    if not is_adult_for_dating(ctx.author):
         await ctx.send(
-
-            "❌ `!소개팅`은 자기소개를 완료한 "
-            "회원만 이용할 수 있어요.\n\n"
-
-            "2012년생부터는 서버 이용이 제한되며,\n"
-
-            "소개팅은 성인끼리 / 미성년자끼리 "
-            "같은 연령 그룹에서만 매칭됩니다."
-
+            "🔞 `!소개팅`은 자기소개를 완료한 성인 회원만 이용할 수 있어요."
         )
-
         return
 
-
-    active_id, _ = dating_member_session(
-        ctx.author.id
-    )
-
+    active_id, _ = dating_member_session(ctx.author.id)
     if active_id:
-
         await ctx.send(
-
-            f"❌ 이미 소개팅을 진행 중이에요.\n"
-            f"세션: `{active_id}`"
-
+            f"❌ 이미 소개팅을 진행 중이에요. 세션: `{active_id}`"
         )
-
         return
 
-
-    group_text = (
-
-        "성인"
-
-        if age_group == "adult"
-
-        else
-
-        "미성년자"
-
-    )
-
-
-    # 현재 같은 그룹 대기자 수
-    same_group_count = 0
-
-    for uid in dating_queue:
-
-        member = ctx.guild.get_member(
-            uid
-        )
-
-        if not member:
-
-            continue
-
-        if get_dating_age_group(
-            member
-        ) == age_group:
-
-            same_group_count += 1
-
+    queue_count = len(dating_queue)
 
     embed = discord.Embed(
-
         title="💗 소개팅",
-
         description=(
-
             "새로운 사람을 만나볼래요?\n\n"
-
-            "버튼을 눌러 참가하면 "
-            "같은 연령 그룹의 참가자와 "
-            "랜덤으로 매칭됩니다.\n\n"
-
-            "💗 **매칭 방식**\n"
-
-            "• 성인 → 성인\n"
-            "• 미성년자 → 미성년자\n"
-            "• 서로 다른 연령 그룹은 매칭되지 않음\n\n"
-
-            f"👤 내 그룹: **{group_text}**\n"
-
-            f"⏳ 같은 그룹 대기자: "
-            f"**{same_group_count}명**"
-
+            "버튼을 눌러 참가하면 다른 참가자와 랜덤으로 매칭됩니다.\n"
+            "매칭되면 두 사람만 볼 수 있는 전용 채팅방이 자동으로 생성돼요.\n\n"
+            f"💗 현재 대기자 **{queue_count}명**\n"
+            "🔞 성인 회원 전용 콘텐츠"
         ),
-
-        color=
-        discord.Color.from_rgb(
-            255,
-            82,
-            145
-        )
-
+        color=discord.Color.from_rgb(255, 82, 145)
     )
-
     embed.set_footer(
-
-        text=
-        "상대방을 존중하면서 즐겨주세요."
-
+        text="상대방을 존중하면서 즐겨주세요."
     )
 
     await ctx.send(
-
         embed=embed,
-
-        view=
-        DatingLobbyView()
-
+        view=DatingLobbyView()
     )
 
 
@@ -4191,6 +3175,7 @@ async def on_message(
 
     )
 
+
     data["last_activity"] = iso(
         now()
     )
@@ -4227,9 +3212,11 @@ async def on_message(
 
         )
 
+
         if result:
 
             year, gender = result
+
 
             await intro_complete(
 
@@ -4280,21 +3267,16 @@ async def on_ready():
 
     load_data()
 
-
     global dating_views_registered
-
     if not dating_views_registered:
-
-        bot.add_view(
-            DatingLobbyView()
-        )
-
+        bot.add_view(DatingLobbyView())
         dating_views_registered = True
 
 
     guild = bot.get_guild(
         GUILD_ID
     )
+
 
     if not guild:
 
@@ -4305,22 +3287,11 @@ async def on_ready():
         return
 
 
-    # 기존 소개팅 버튼 복구
-
     for session_id, session in dating_sessions.items():
-
-        if session.get(
-            "status"
-        ) == "active":
-
+        if session.get("status") == "active":
             bot.add_view(
-
-                DatingView(
-                    session_id
-                ),
-
+                DatingView(session_id),
                 message_id=None
-
             )
 
 
