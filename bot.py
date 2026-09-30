@@ -1,3 +1,4 @@
+```python
 # =========================================================
 # Discord Server Management Bot
 # 분리된 메인 실행 파일
@@ -28,6 +29,9 @@ async def main():
     # PostgreSQL 연결
     await init_database()
 
+    # PostgreSQL에서 회원 / 자기소개 데이터 불러오기
+    await load_members_from_db()
+
     # PostgreSQL에서 프로필 불러오기
     await load_profiles_from_db()
 
@@ -55,3 +59,4 @@ if __name__ == "__main__":
     asyncio.run(
         main()
     )
+```
