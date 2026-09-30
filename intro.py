@@ -3,18 +3,6 @@ from core import *
 
 # =========================================================
 # 자기소개 파싱
-#
-# 1900~1999
-# -> 1900 남
-# -> 1999 여
-#
-# 2000년대
-# -> 00 남
-# -> 04 ㅇ
-# -> 04 ㄴ
-# -> 04 여
-#
-# 2012년생부터 추방
 # =========================================================
 
 def parse_intro(text):
@@ -26,26 +14,20 @@ def parse_intro(text):
     # -----------------------------------------------------
 
     match = re.search(
-
         r"(?<!\d)"
         r"(19\d{2}|20\d{2})"
         r"\s*"
         r"(남|여|ㄴ|ㅇ)"
         r"(?!\S)",
-
         text
-
     )
 
     if match:
 
         raw_year = match.group(1)
-
         gender = match.group(2)
 
-        year = int(
-            raw_year
-        )
+        year = int(raw_year)
 
     else:
 
@@ -55,40 +37,30 @@ def parse_intro(text):
         # -------------------------------------------------
 
         match = re.search(
-
             r"(?<!\d)"
             r"(\d{2})"
             r"\s*"
             r"(남|여|ㄴ|ㅇ)"
             r"(?!\S)",
-
             text
-
         )
 
         if not match:
-
             return None
 
         raw_year = match.group(1)
-
         gender = match.group(2)
 
-        short_year = int(
-            raw_year
-        )
+        short_year = int(raw_year)
 
         current_year = datetime.now().year
-
         current_short = current_year % 100
 
         # 미래 연도 방지
         if short_year > current_short:
-
             return None
 
         year = 2000 + short_year
-
 
     # -----------------------------------------------------
     # 연도 검증
@@ -97,13 +69,10 @@ def parse_intro(text):
     current_year = datetime.now().year
 
     if year < 1900:
-
         return None
 
     if year > current_year:
-
         return None
-
 
     # -----------------------------------------------------
     # 성별
@@ -119,7 +88,6 @@ def parse_intro(text):
     else:
 
         gender = "여"
-
 
     return (
         year,
@@ -140,90 +108,61 @@ async def apply_intro_roles(
     # 기존 역할 제거
 
     for key in (
-
         "unverified",
         "male",
         "female",
         "adult",
         "minor"
-
     ):
 
         await manage_role(
-
             member,
-
             ROLES[key],
-
             False
-
         )
-
 
     # 성별
 
     if gender == "남":
 
         await manage_role(
-
             member,
-
             ROLES["male"],
-
             True
-
         )
 
     else:
 
         await manage_role(
-
             member,
-
             ROLES["female"],
-
             True
-
         )
-
 
     # 나이
 
     if age_type(year) == "성인":
 
         await manage_role(
-
             member,
-
             ROLES["adult"],
-
             True
-
         )
 
     else:
 
         await manage_role(
-
             member,
-
             ROLES["minor"],
-
             True
-
         )
-
 
     # 자기소개 완료 역할
 
     await manage_role(
-
         member,
-
         ROLES["intro_complete"],
-
         True
-
     )
 
 
@@ -239,59 +178,9 @@ async def intro_complete(
 
     member = message.author
 
-
     # -----------------------------------------------------
-    # 연령 제한
+    # 연령 제한 없음
     # -----------------------------------------------------
-
-    if year >= MIN_ALLOWED_BIRTH_YEAR:
-
-        try:
-
-            log = get_log_channel(
-                message.guild
-            )
-
-            if log:
-
-                await log.send(
-
-                    f"🚫 **연령 제한 추방**\n"
-                    f"대상: {member.mention}\n"
-                    f"출생년도: `{year}`\n"
-                    f"사유: `2012년생부터 이용 제한`"
-
-                )
-
-            await member.kick(
-
-                reason=
-                "연령 제한"
-
-            )
-
-            data = member_data(
-                member
-            )
-
-            data["kicked"] = True
-
-            # PostgreSQL 저장
-            await save_member_to_db(
-                member.id,
-                data
-            )
-
-            return
-
-        except Exception as e:
-
-            print(
-                f"[AGE KICK ERROR] {e}"
-            )
-
-            return
-
 
     # -----------------------------------------------------
     # 회원 데이터
@@ -330,21 +219,15 @@ async def intro_complete(
         member.id
     )
 
-
     # -----------------------------------------------------
     # 역할
     # -----------------------------------------------------
 
     await apply_intro_roles(
-
         member,
-
         year,
-
         gender
-
     )
-
 
     # -----------------------------------------------------
     # 안내
@@ -387,7 +270,6 @@ class KickView(
 
         self.member = member
 
-
     async def on_timeout(
         self
     ):
@@ -396,72 +278,45 @@ class KickView(
             self.member.id
         )
 
-
     @discord.ui.button(
-
         label="예, 추방하기",
-
-        style=
-        discord.ButtonStyle.danger
-
+        style=discord.ButtonStyle.danger
     )
     async def confirm(
-
         self,
-
-        interaction:
-        discord.Interaction,
-
-        button:
-        discord.ui.Button
-
+        interaction: discord.Interaction,
+        button: discord.ui.Button
     ):
 
         if not interaction.user.guild_permissions.administrator:
 
             await interaction.response.send_message(
-
                 "❌ 관리자만 사용할 수 있습니다.",
-
                 ephemeral=True
-
             )
 
             return
 
-
         member = interaction.guild.get_member(
-
             self.member.id
-
         )
-
 
         if not member:
 
             await interaction.response.edit_message(
-
-                content=
-                "❌ 회원을 찾을 수 없습니다.",
-
+                content="❌ 회원을 찾을 수 없습니다.",
                 view=None
-
             )
 
             return
-
 
         data = member_data(
             member
         )
 
-
         if data.get(
-
             "intro_completed",
-
             False
-
         ):
 
             pending_kicks.discard(
@@ -469,25 +324,19 @@ class KickView(
             )
 
             await interaction.response.edit_message(
-
-                content=
-                f"✅ {member.mention}님은 "
-                f"이미 자기소개를 완료했습니다.",
-
+                content=(
+                    f"✅ {member.mention}님은 "
+                    f"이미 자기소개를 완료했습니다."
+                ),
                 view=None
-
             )
 
             return
 
-
         try:
 
             await member.kick(
-
-                reason=
-                "자기소개 미작성"
-
+                reason="자기소개 미작성"
             )
 
             data["kicked"] = True
@@ -503,13 +352,11 @@ class KickView(
             )
 
             await interaction.response.edit_message(
-
-                content=
-                f"🚪 {member.mention}님을 "
-                f"자기소개 미작성으로 추방했습니다.",
-
+                content=(
+                    f"🚪 {member.mention}님을 "
+                    f"자기소개 미작성으로 추방했습니다."
+                ),
                 view=None
-
             )
 
         except Exception as e:
@@ -519,59 +366,39 @@ class KickView(
             )
 
             await interaction.response.send_message(
-
                 "❌ 추방 처리 실패",
-
                 ephemeral=True
-
             )
 
-
     @discord.ui.button(
-
         label="취소",
-
-        style=
-        discord.ButtonStyle.secondary
-
+        style=discord.ButtonStyle.secondary
     )
     async def cancel(
-
         self,
-
-        interaction:
-        discord.Interaction,
-
-        button:
-        discord.ui.Button
-
+        interaction: discord.Interaction,
+        button: discord.ui.Button
     ):
 
         if not interaction.user.guild_permissions.administrator:
 
             await interaction.response.send_message(
-
                 "❌ 관리자만 사용할 수 있습니다.",
-
                 ephemeral=True
-
             )
 
             return
-
 
         pending_kicks.discard(
             self.member.id
         )
 
         await interaction.response.edit_message(
-
-            content=
-            f"❎ {self.member.mention}님의 "
-            f"추방 처리를 취소했습니다.",
-
+            content=(
+                f"❎ {self.member.mention}님의 "
+                f"추방 처리를 취소했습니다."
+            ),
             view=None
-
         )
 
 
@@ -587,44 +414,33 @@ async def send_kick_review(
     # 자기소개 제외 회원
 
     if member.id in intro_exceptions:
-
         return
-
 
     # 이미 대기 중
 
     if member.id in pending_kicks:
-
         return
-
 
     data = member_data(
         member
     )
 
-
     if data.get(
         "intro_completed",
         False
     ):
-
         return
-
 
     log = get_log_channel(
         guild
     )
 
-
     if not log:
-
         return
-
 
     pending_kicks.add(
         member.id
     )
-
 
     try:
 
@@ -668,39 +484,29 @@ async def intro_check():
     )
 
     if not guild:
-
         return
 
-
     current = now()
-
 
     for member in guild.members:
 
         if member.bot:
-
             continue
-
 
         # 제외 회원
 
         if member.id in intro_exceptions:
-
             continue
-
 
         data = member_data(
             member
         )
 
-
         if data.get(
             "intro_completed",
             False
         ):
-
             continue
-
 
         # 기존 회원 제외
 
@@ -708,42 +514,27 @@ async def intro_check():
             "is_existing_member",
             True
         ):
-
             continue
 
-
         joined = parse_dt(
-
             data.get(
                 "joined_at"
             )
-
         )
 
-
         if not joined:
-
             continue
-
 
         elapsed = (
-
             current - joined
-
         ).total_seconds()
 
-
         if elapsed < INTRO_MINUTES * 60:
-
             continue
 
-
         await send_kick_review(
-
             guild,
-
             member
-
         )
 
 
@@ -757,14 +548,10 @@ async def on_member_join(
 ):
 
     if member.guild.id != GUILD_ID:
-
         return
-
 
     if member.bot:
-
         return
-
 
     members[str(member.id)] = {
 
@@ -791,24 +578,17 @@ async def on_member_join(
 
     }
 
-
     # PostgreSQL 저장
     await save_member_to_db(
         member.id,
         members[str(member.id)]
     )
 
-
     await manage_role(
-
         member,
-
         ROLES["unverified"],
-
         True
-
     )
-
 
     print(
         f"[JOIN] {member}"
