@@ -11,8 +11,8 @@ from core import *
 # 채팅 EXP
 # =========================================================
 
-@bot.event
-async def on_message(
+@bot.listen("on_message")
+async def experience_on_message(
     message
 ):
 
