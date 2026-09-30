@@ -48,6 +48,9 @@ ROLE_CHANNEL_ID = 1553458747177967656
 MAIN_CHAT_ID = 1553421449698480248
 BODY_SHARE_ID = 1553432612377202849
 
+# 10만 EXP 해금 채널
+EXP_CHANNEL_ID = 1554764029493379124
+
 
 # =========================================================
 # 자기소개 설정
@@ -81,9 +84,33 @@ ROLES = {
         1553440075830919238,
 
     "minor":
-        1553438682298589284
+        1553438682298589284,
+
+    # 자기소개 완료 보너스 역할
+    "intro_complete":
+        1554818010777391286,
+
+    # 100,000 EXP 달성 역할
+    "exp_100k":
+        1554762930883665931
 
 }
+
+
+# =========================================================
+# EXP 설정
+# =========================================================
+
+EXP_CHAT = 1
+
+EXP_VOICE_PER_MINUTE = 5
+
+EXP_BUMP = 10
+
+EXP_TARGET = 100000
+
+# 채팅 EXP 도배 방지
+CHAT_EXP_COOLDOWN = 5
 
 
 # =========================================================
@@ -171,6 +198,12 @@ dating_queue = []
 dating_sessions = {}
 
 dating_views_registered = False
+
+# 채팅 EXP 쿨다운
+exp_chat_cooldowns = {}
+
+# 음성 EXP 지급 기록
+exp_voice_last = {}
 
 
 # =========================================================
@@ -268,7 +301,6 @@ async def init_database():
 
         async with db_pool.acquire() as conn:
 
-            # 프로필 테이블
             await conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS profiles (
@@ -278,12 +310,20 @@ async def init_database():
                 """
             )
 
-            # 회원 / 자기소개 테이블
             await conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS members (
                     user_id TEXT PRIMARY KEY,
                     data JSONB NOT NULL
+                )
+                """
+            )
+
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS experience (
+                    user_id TEXT PRIMARY KEY,
+                    exp BIGINT NOT NULL DEFAULT 0
                 )
                 """
             )
@@ -328,7 +368,6 @@ async def load_members_from_db():
                 """
             )
 
-        # DB에 데이터가 있으면 DB 데이터를 사용
         if rows:
 
             db_members = {}
@@ -358,13 +397,11 @@ async def load_members_from_db():
 
         else:
 
-            # DB가 비어 있으면 기존 JSON 데이터 유지
             print(
                 f"[DB] 회원 DB가 비어있음 "
                 f"- 기존 데이터 {len(members)}개 유지"
             )
 
-            # 기존 JSON 데이터를 DB로 이전
             if members:
 
                 print(
@@ -483,6 +520,182 @@ async def delete_member_from_db(
 
         print(
             f"[DB MEMBER DELETE ERROR] {e}"
+        )
+
+
+# =========================================================
+# EXP 불러오기
+# =========================================================
+
+async def get_exp(user_id):
+
+    if db_pool is None:
+
+        return 0
+
+    try:
+
+        async with db_pool.acquire() as conn:
+
+            value = await conn.fetchval(
+                """
+                SELECT exp
+                FROM experience
+                WHERE user_id = $1
+                """,
+                str(user_id)
+            )
+
+        if value is None:
+
+            return 0
+
+        return int(value)
+
+    except Exception as e:
+
+        print(
+            f"[EXP LOAD ERROR] {e}"
+        )
+
+        return 0
+
+
+# =========================================================
+# EXP 저장
+# =========================================================
+
+async def set_exp(
+    user_id,
+    amount
+):
+
+    if db_pool is None:
+
+        print(
+            "[EXP] DB 연결 없음"
+        )
+
+        return
+
+    amount = max(
+        0,
+        int(amount)
+    )
+
+    try:
+
+        async with db_pool.acquire() as conn:
+
+            await conn.execute(
+                """
+                INSERT INTO experience (
+                    user_id,
+                    exp
+                )
+                VALUES (
+                    $1,
+                    $2
+                )
+                ON CONFLICT (user_id)
+                DO UPDATE SET
+                    exp = EXCLUDED.exp
+                """,
+
+                str(user_id),
+                amount
+
+            )
+
+    except Exception as e:
+
+        print(
+            f"[EXP SAVE ERROR] {e}"
+        )
+
+
+# =========================================================
+# EXP 추가
+# =========================================================
+
+async def add_exp(
+    member,
+    amount,
+    reason="기타"
+):
+
+    if member.bot:
+
+        return 0
+
+    if member.guild.id != GUILD_ID:
+
+        return 0
+
+    current = await get_exp(
+        member.id
+    )
+
+    new_exp = current + int(amount)
+
+    await set_exp(
+        member.id,
+        new_exp
+    )
+
+    # 10만 EXP 달성
+    if (
+        current < EXP_TARGET
+        and
+        new_exp >= EXP_TARGET
+    ):
+
+        await give_exp_100k_role(
+            member
+        )
+
+        print(
+            f"[EXP] {member} "
+            f"100,000 EXP 달성"
+        )
+
+    return new_exp
+
+
+# =========================================================
+# 10만 EXP 역할 지급
+# =========================================================
+
+async def give_exp_100k_role(
+    member
+):
+
+    role = member.guild.get_role(
+        ROLES["exp_100k"]
+    )
+
+    if not role:
+
+        print(
+            "[EXP ROLE ERROR] "
+            "100,000 EXP 역할을 찾을 수 없습니다."
+        )
+
+        return
+
+    try:
+
+        if role not in member.roles:
+
+            await member.add_roles(
+                role,
+                reason="100,000 EXP 달성"
+            )
+
+    except Exception as e:
+
+        print(
+            f"[EXP ROLE ERROR] {e}"
         )
 
 
