@@ -43,13 +43,9 @@ except ValueError:
 # =========================================================
 
 LOG_CHANNEL_ID = 1553436251598626866
-
 INTRO_CHANNEL_ID = 1553435494074023956
-
 ROLE_CHANNEL_ID = 1553458747177967656
-
 MAIN_CHAT_ID = 1553421449698480248
-
 BODY_SHARE_ID = 1553432612377202849
 
 
@@ -136,13 +132,9 @@ WARNING_TIMEOUT = {
 intents = discord.Intents.default()
 
 intents.guilds = True
-
 intents.members = True
-
 intents.messages = True
-
 intents.message_content = True
-
 intents.voice_states = True
 
 
@@ -276,9 +268,20 @@ async def init_database():
 
         async with db_pool.acquire() as conn:
 
+            # 프로필 테이블
             await conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS profiles (
+                    user_id TEXT PRIMARY KEY,
+                    data JSONB NOT NULL
+                )
+                """
+            )
+
+            # 회원 / 자기소개 테이블
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS members (
                     user_id TEXT PRIMARY KEY,
                     data JSONB NOT NULL
                 )
@@ -295,6 +298,197 @@ async def init_database():
             f"[DB ERROR] {e}"
         )
 
+
+# =========================================================
+# 회원 데이터 DB 불러오기
+# =========================================================
+
+async def load_members_from_db():
+
+    global members
+
+    if db_pool is None:
+
+        print(
+            "[DB] 회원 DB 연결 없음"
+        )
+
+        return
+
+    try:
+
+        async with db_pool.acquire() as conn:
+
+            rows = await conn.fetch(
+                """
+                SELECT
+                    user_id,
+                    data::text AS data
+                FROM members
+                """
+            )
+
+        # DB에 데이터가 있으면 DB 데이터를 사용
+        if rows:
+
+            db_members = {}
+
+            for row in rows:
+
+                try:
+
+                    db_members[
+                        row["user_id"]
+                    ] = json.loads(
+                        row["data"]
+                    )
+
+                except Exception as e:
+
+                    print(
+                        f"[DB MEMBER LOAD ERROR] {e}"
+                    )
+
+            members = db_members
+
+            print(
+                f"[DB] 회원 데이터 "
+                f"{len(members)}개 로드 완료"
+            )
+
+        else:
+
+            # DB가 비어 있으면 기존 JSON 데이터 유지
+            print(
+                f"[DB] 회원 DB가 비어있음 "
+                f"- 기존 데이터 {len(members)}개 유지"
+            )
+
+            # 기존 JSON 데이터를 DB로 이전
+            if members:
+
+                print(
+                    "[DB] 기존 회원 데이터를 "
+                    "PostgreSQL로 이전합니다."
+                )
+
+                for user_id, data in members.items():
+
+                    await save_member_to_db(
+                        user_id,
+                        data
+                    )
+
+                print(
+                    f"[DB] 회원 데이터 "
+                    f"{len(members)}개 이전 완료"
+                )
+
+    except Exception as e:
+
+        print(
+            f"[DB MEMBER LOAD ERROR] {e}"
+        )
+
+
+# =========================================================
+# 회원 데이터 DB 저장
+# =========================================================
+
+async def save_member_to_db(
+    user_id,
+    data
+):
+
+    if db_pool is None:
+
+        print(
+            "[DB] 회원 DB 연결 없음"
+        )
+
+        return
+
+    try:
+
+        async with db_pool.acquire() as conn:
+
+            await conn.execute(
+                """
+                INSERT INTO members (
+                    user_id,
+                    data
+                )
+                VALUES (
+                    $1,
+                    $2::jsonb
+                )
+                ON CONFLICT (user_id)
+                DO UPDATE SET
+                    data = EXCLUDED.data
+                """,
+
+                str(user_id),
+
+                json.dumps(
+                    data,
+                    ensure_ascii=False
+                )
+
+            )
+
+        print(
+            f"[DB] 회원 데이터 저장 완료: "
+            f"{user_id}"
+        )
+
+    except Exception as e:
+
+        print(
+            f"[DB MEMBER SAVE ERROR] {e}"
+        )
+
+
+# =========================================================
+# 회원 데이터 DB 삭제
+# =========================================================
+
+async def delete_member_from_db(
+    user_id
+):
+
+    if db_pool is None:
+
+        return
+
+    try:
+
+        async with db_pool.acquire() as conn:
+
+            await conn.execute(
+                """
+                DELETE FROM members
+                WHERE user_id = $1
+                """,
+
+                str(user_id)
+
+            )
+
+        print(
+            f"[DB] 회원 데이터 삭제 완료: "
+            f"{user_id}"
+        )
+
+    except Exception as e:
+
+        print(
+            f"[DB MEMBER DELETE ERROR] {e}"
+        )
+
+
+# =========================================================
+# 프로필 DB 불러오기
+# =========================================================
 
 async def load_profiles_from_db():
 
@@ -349,6 +543,10 @@ async def load_profiles_from_db():
         )
 
 
+# =========================================================
+# 프로필 DB 저장
+# =========================================================
+
 async def save_profile_to_db(
     user_id,
     data
@@ -402,6 +600,10 @@ async def save_profile_to_db(
         )
 
 
+# =========================================================
+# 프로필 DB 삭제
+# =========================================================
+
 async def delete_profile_from_db(
     user_id
 ):
@@ -419,7 +621,9 @@ async def delete_profile_from_db(
                 DELETE FROM profiles
                 WHERE user_id = $1
                 """,
+
                 str(user_id)
+
             )
 
         print(
