@@ -40,3 +40,58 @@ async def experience_on_message(message):
             EXP_CHAT,
             "채팅"
         )
+        # =========================================================
+# 내 EXP 확인
+# =========================================================
+
+@bot.command(
+    name="내EXP",
+    aliases=["내경험치"]
+)
+async def my_exp(ctx):
+
+    # 서버에서만 사용
+    if not ctx.guild:
+        return
+
+    # 지정 서버만
+    if ctx.guild.id != GUILD_ID:
+        return
+
+    # 현재 EXP
+    current = await get_exp(
+        ctx.author.id
+    )
+
+    # 목표까지 남은 EXP
+    remaining = max(
+        0,
+        EXP_TARGET - current
+    )
+
+    # 진행도
+    percent = min(
+        100,
+        current / EXP_TARGET * 100
+    )
+
+    # 진행바
+    bar_length = 10
+
+    filled = int(
+        percent / 100 * bar_length
+    )
+
+    progress_bar = (
+        "█" * filled
+        + "░" * (bar_length - filled)
+    )
+
+    await ctx.send(
+        f"📊 **{ctx.author.display_name}님의 EXP**\n"
+        f"\n"
+        f"현재 EXP : `{current:,}`\n"
+        f"남은 EXP : `{remaining:,}`\n"
+        f"진행도 : `{percent:.2f}%`\n"
+        f"`{progress_bar}`"
+    )
