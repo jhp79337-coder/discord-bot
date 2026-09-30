@@ -1,5 +1,6 @@
 from core import *
 
+
 # =========================================================
 # 자기소개 파싱
 #
@@ -262,12 +263,10 @@ async def intro_complete(
 
             data["kicked"] = True
 
-            save_json(
-
-                FILES["members"],
-
-                members
-
+            # PostgreSQL 저장
+            await save_member_to_db(
+                member.id,
+                data
             )
 
             return
@@ -308,12 +307,10 @@ async def intro_complete(
 
     })
 
-    save_json(
-
-        FILES["members"],
-
-        members
-
+    # PostgreSQL 저장
+    await save_member_to_db(
+        member.id,
+        data
     )
 
     pending_kicks.discard(
@@ -482,12 +479,10 @@ class KickView(
 
             data["kicked"] = True
 
-            save_json(
-
-                FILES["members"],
-
-                members
-
+            # PostgreSQL 저장
+            await save_member_to_db(
+                member.id,
+                data
             )
 
             pending_kicks.discard(
@@ -784,12 +779,10 @@ async def on_member_join(
     }
 
 
-    save_json(
-
-        FILES["members"],
-
-        members
-
+    # PostgreSQL 저장
+    await save_member_to_db(
+        member.id,
+        members[str(member.id)]
     )
 
 
@@ -807,5 +800,3 @@ async def on_member_join(
     print(
         f"[JOIN] {member}"
     )
-
-
