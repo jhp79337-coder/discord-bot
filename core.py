@@ -1,6 +1,6 @@
 # =========================================================
 # Discord Server Management Bot
-# bot.py
+# core.py
 # =========================================================
 
 import os
@@ -28,16 +28,13 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 try:
-
     GUILD_ID = int(
         os.getenv(
             "GUILD_ID",
             "1553419235701690428"
         )
     )
-
 except ValueError:
-
     GUILD_ID = 1553419235701690428
 
 
@@ -96,6 +93,7 @@ ROLES = {
 # =========================================================
 # 데이터 파일
 # =========================================================
+
 FILES = {
 
     "members":
@@ -114,6 +112,8 @@ FILES = {
         "dating_sessions.json"
 
 }
+
+
 # =========================================================
 # 경고 설정
 # =========================================================
@@ -170,11 +170,14 @@ profiles = {}
 db_pool = None
 
 intro_exceptions = set()
+
 pending_kicks = set()
 
 # 소개팅 콘텐츠 데이터
 dating_queue = []
+
 dating_sessions = {}
+
 dating_views_registered = False
 
 
@@ -240,6 +243,201 @@ def save_json(filename, data):
         )
 
 
+# =========================================================
+# PostgreSQL
+# =========================================================
+
+async def init_database():
+
+    global db_pool
+
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+
+        print(
+            "[DB ERROR] "
+            "DATABASE_URL이 없습니다."
+        )
+
+        return
+
+    try:
+
+        db_pool = await asyncpg.create_pool(
+
+            database_url,
+
+            min_size=1,
+
+            max_size=5
+
+        )
+
+        async with db_pool.acquire() as conn:
+
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS profiles (
+                    user_id TEXT PRIMARY KEY,
+                    data JSONB NOT NULL
+                )
+                """
+            )
+
+        print(
+            "[DB] PostgreSQL 연결 완료"
+        )
+
+    except Exception as e:
+
+        print(
+            f"[DB ERROR] {e}"
+        )
+
+
+async def load_profiles_from_db():
+
+    global profiles
+
+    if db_pool is None:
+
+        print(
+            "[DB] 프로필 DB 연결 없음"
+        )
+
+        return
+
+    try:
+
+        async with db_pool.acquire() as conn:
+
+            rows = await conn.fetch(
+                """
+                SELECT
+                    user_id,
+                    data::text AS data
+                FROM profiles
+                """
+            )
+
+        profiles = {}
+
+        for row in rows:
+
+            try:
+
+                profiles[row["user_id"]] = json.loads(
+                    row["data"]
+                )
+
+            except Exception as e:
+
+                print(
+                    f"[DB PROFILE LOAD ERROR] {e}"
+                )
+
+        print(
+            f"[DB] 프로필 "
+            f"{len(profiles)}개 로드 완료"
+        )
+
+    except Exception as e:
+
+        print(
+            f"[DB PROFILE LOAD ERROR] {e}"
+        )
+
+
+async def save_profile_to_db(
+    user_id,
+    data
+):
+
+    if db_pool is None:
+
+        print(
+            "[DB] 프로필 DB 연결 없음"
+        )
+
+        return
+
+    try:
+
+        async with db_pool.acquire() as conn:
+
+            await conn.execute(
+                """
+                INSERT INTO profiles (
+                    user_id,
+                    data
+                )
+                VALUES (
+                    $1,
+                    $2::jsonb
+                )
+                ON CONFLICT (user_id)
+                DO UPDATE SET
+                    data = EXCLUDED.data
+                """,
+
+                str(user_id),
+
+                json.dumps(
+                    data,
+                    ensure_ascii=False
+                )
+
+            )
+
+        print(
+            f"[DB] 프로필 저장 완료: "
+            f"{user_id}"
+        )
+
+    except Exception as e:
+
+        print(
+            f"[DB PROFILE SAVE ERROR] {e}"
+        )
+
+
+async def delete_profile_from_db(
+    user_id
+):
+
+    if db_pool is None:
+
+        return
+
+    try:
+
+        async with db_pool.acquire() as conn:
+
+            await conn.execute(
+                """
+                DELETE FROM profiles
+                WHERE user_id = $1
+                """,
+                str(user_id)
+            )
+
+        print(
+            f"[DB] 프로필 삭제 완료: "
+            f"{user_id}"
+        )
+
+    except Exception as e:
+
+        print(
+            f"[DB PROFILE DELETE ERROR] {e}"
+        )
+
+
+# =========================================================
+# 데이터 로드
+# =========================================================
+
 def load_data():
 
     global members
@@ -285,18 +483,39 @@ def load_data():
 
     dating_data = load_json(
         FILES["dating"],
-        {"queue": [], "sessions": {}}
+        {
+            "queue": [],
+            "sessions": {}
+        }
     )
 
     dating_queue = []
-    for value in dating_data.get("queue", []):
+
+    for value in dating_data.get(
+        "queue",
+        []
+    ):
+
         try:
-            dating_queue.append(int(value))
+
+            dating_queue.append(
+                int(value)
+            )
+
         except Exception:
+
             pass
 
-    dating_sessions = dating_data.get("sessions", {})
-    if not isinstance(dating_sessions, dict):
+    dating_sessions = dating_data.get(
+        "sessions",
+        {}
+    )
+
+    if not isinstance(
+        dating_sessions,
+        dict
+    ):
+
         dating_sessions = {}
 
     print("=" * 50)
@@ -524,5 +743,3 @@ async def manage_role(
         print(
             f"[ROLE ERROR] {e}"
         )
-
-
