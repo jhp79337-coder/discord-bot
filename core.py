@@ -167,6 +167,8 @@ warnings = {}
 
 profiles = {}
 
+db_pool = None
+
 intro_exceptions = set()
 pending_kicks = set()
 
