@@ -1,7 +1,5 @@
-```python
 from core import *
 from discord.ext import tasks
-
 
 # =========================================================
 # 채팅 EXP
@@ -9,7 +7,6 @@ from discord.ext import tasks
 
 @bot.listen("on_message")
 async def experience_on_message(message):
-
     if message.author.bot:
         return
 
@@ -21,14 +18,9 @@ async def experience_on_message(message):
 
     user_id = message.author.id
     current_time = now().timestamp()
-
-    last_time = exp_chat_cooldowns.get(
-        user_id,
-        0
-    )
+    last_time = exp_chat_cooldowns.get(user_id, 0)
 
     if current_time - last_time >= CHAT_EXP_COOLDOWN:
-
         exp_chat_cooldowns[user_id] = current_time
 
         await add_exp(
@@ -47,16 +39,13 @@ async def experience_on_message(message):
     aliases=["내경험치"]
 )
 async def my_exp(ctx):
-
     if not ctx.guild:
         return
 
     if ctx.guild.id != GUILD_ID:
         return
 
-    current = await get_exp(
-        ctx.author.id
-    )
+    current = await get_exp(ctx.author.id)
 
     remaining = max(
         0,
@@ -98,7 +87,6 @@ async def my_exp(ctx):
     aliases=["도움말"]
 )
 async def help_command(ctx):
-
     if not ctx.guild:
         return
 
@@ -119,7 +107,7 @@ async def help_command(ctx):
         "\n"
         "ℹ️ **기타**\n"
         "`!명령어` — 명령어 목록\n"
-        "`!도움말` — 도움말 보기\n"
+        "`!도움말` — 도움말 보기"
     )
 
 
@@ -135,13 +123,10 @@ async def admin_add_exp(
     member: discord.Member,
     amount: int
 ):
-
     if not ctx.author.guild_permissions.administrator:
-
         await ctx.send(
             "❌ 관리자만 사용할 수 있습니다."
         )
-
         return
 
     if not ctx.guild:
@@ -151,11 +136,9 @@ async def admin_add_exp(
         return
 
     if amount <= 0:
-
         await ctx.send(
             "❌ EXP는 1 이상 입력해주세요."
         )
-
         return
 
     new_exp = await add_exp(
@@ -177,7 +160,6 @@ async def admin_add_exp(
 
 @tasks.loop(minutes=1)
 async def voice_exp_loop():
-
     guild = bot.get_guild(
         GUILD_ID
     )
@@ -186,9 +168,7 @@ async def voice_exp_loop():
         return
 
     for channel in guild.voice_channels:
-
         for member in channel.members:
-
             if member.bot:
                 continue
 
@@ -201,14 +181,10 @@ async def voice_exp_loop():
 
 @voice_exp_loop.before_loop
 async def before_voice_exp_loop():
-
     await bot.wait_until_ready()
 
 
 @bot.listen("on_ready")
 async def start_voice_exp():
-
     if not voice_exp_loop.is_running():
-
         voice_exp_loop.start()
-```
