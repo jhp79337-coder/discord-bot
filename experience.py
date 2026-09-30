@@ -95,3 +95,39 @@ async def my_exp(ctx):
         f"진행도 : `{percent:.2f}%`\n"
         f"`{progress_bar}`"
     )
+# =========================================================
+# 관리자 EXP 테스트 지급
+# =========================================================
+
+@bot.command(name="EXP지급")
+async def admin_add_exp(ctx, member: discord.Member, amount: int):
+
+    # 관리자만 사용
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ 관리자만 사용할 수 있습니다.")
+        return
+
+    # 서버 확인
+    if not ctx.guild:
+        return
+
+    if ctx.guild.id != GUILD_ID:
+        return
+
+    # 잘못된 EXP 방지
+    if amount <= 0:
+        await ctx.send("❌ EXP는 1 이상 입력해주세요.")
+        return
+
+    # EXP 지급
+    new_exp = await add_exp(
+        member,
+        amount,
+        "관리자 테스트 지급"
+    )
+
+    await ctx.send(
+        f"✅ {member.mention}에게 "
+        f"`{amount:,} EXP`를 지급했습니다.\n"
+        f"현재 EXP : `{new_exp:,}`"
+    )
