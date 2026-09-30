@@ -1,4 +1,3 @@
-```python
 from core import *
 from intro import intro_check, intro_complete, parse_intro
 from dating import DatingLobbyView, DatingView
@@ -7,9 +6,7 @@ from dating import DatingLobbyView, DatingView
 # =========================================================
 
 @bot.event
-async def on_message(
-    message
-):
+async def on_message(message):
 
     # 봇 무시
     if message.author.bot:
@@ -37,22 +34,12 @@ async def on_message(
     # =====================================================
 
     if (
-        message.channel.id
-        ==
-        INTRO_CHANNEL_ID
-
-        and
-
-        not data.get(
+        message.channel.id == INTRO_CHANNEL_ID
+        and not data.get(
             "intro_completed",
             False
         )
-
-        and
-
-        message.author.id
-        not in
-        intro_exceptions
+        and message.author.id not in intro_exceptions
     ):
 
         result = parse_intro(
@@ -69,7 +56,6 @@ async def on_message(
                 gender
             )
 
-    # 기존 JSON 저장 유지
     save_json(
         FILES["members"],
         members
@@ -101,16 +87,9 @@ async def on_ready():
     print("=" * 50)
 
     # 중요:
-    # 여기서 load_data()를 다시 실행하면
-    # PostgreSQL에서 불러온 members 데이터가
-    # 오래된 JSON 데이터로 덮어써질 수 있음.
-    #
-    # bot.py에서 이미
-    # load_data()
-    # init_database()
-    # load_members_from_db()
-    # load_profiles_from_db()
-    # 순서로 초기화하고 있으므로 여기서는 다시 호출하지 않음.
+    # 여기서 load_data()를 실행하지 않음.
+    # bot.py에서 PostgreSQL 회원 데이터를 불러온 뒤
+    # 다시 JSON으로 덮어쓰는 문제를 방지함.
 
     global dating_views_registered
 
@@ -204,4 +183,3 @@ async def on_command_error(
         f"{type(error).__name__}: "
         f"{error}"
     )
-```
