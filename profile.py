@@ -1,5 +1,6 @@
 from core import *
 
+
 # =========================================================
 # 프로필
 # =========================================================
@@ -11,7 +12,6 @@ def get_profile(
     uid = str(
         user_id
     )
-
 
     if uid not in profiles:
 
@@ -33,7 +33,6 @@ def get_profile(
                 None
 
         }
-
 
     return profiles[uid]
 
@@ -59,7 +58,6 @@ class ProfileModal(
 
     )
 
-
     location = discord.ui.TextInput(
 
         label="사는 곳",
@@ -71,7 +69,6 @@ class ProfileModal(
         max_length=50
 
     )
-
 
     gender = discord.ui.TextInput(
 
@@ -85,7 +82,6 @@ class ProfileModal(
 
     )
 
-
     ideal_type = discord.ui.TextInput(
 
         label="이상형",
@@ -97,7 +93,6 @@ class ProfileModal(
         max_length=200
 
     )
-
 
     likes = discord.ui.TextInput(
 
@@ -111,17 +106,14 @@ class ProfileModal(
 
     )
 
-
     async def on_submit(
         self,
-        interaction:
-        discord.Interaction
+        interaction: discord.Interaction
     ):
 
         uid = str(
             interaction.user.id
         )
-
 
         profiles[uid] = {
 
@@ -147,15 +139,11 @@ class ProfileModal(
 
         }
 
-
-        save_json(
-
-            FILES["profiles"],
-
-            profiles
-
+        # PostgreSQL에 저장
+        await save_profile_to_db(
+            uid,
+            profiles[uid]
         )
-
 
         await interaction.response.send_message(
 
@@ -171,43 +159,89 @@ class ProfileModal(
 # !프로필
 # =========================================================
 
-class ProfileCardView(discord.ui.View):
+class ProfileCardView(
+    discord.ui.View
+):
 
-    def __init__(self, owner_id):
-        super().__init__(timeout=300)
+    def __init__(
+        self,
+        owner_id
+    ):
+
+        super().__init__(
+            timeout=300
+        )
+
         self.owner_id = owner_id
 
     @discord.ui.button(
+
         label="프로필 편집",
+
         emoji="✏️",
+
         style=discord.ButtonStyle.primary
+
     )
-    async def edit_profile(self, interaction, button):
+    async def edit_profile(
+
+        self,
+        interaction,
+        button
+
+    ):
+
         if interaction.user.id != self.owner_id:
+
             await interaction.response.send_message(
+
                 "❌ 본인 프로필만 수정할 수 있습니다.",
+
                 ephemeral=True
+
             )
+
             return
 
-        await interaction.response.send_modal(ProfileModal())
+        await interaction.response.send_modal(
+            ProfileModal()
+        )
 
     @discord.ui.button(
+
         label="소개팅",
+
         emoji="💗",
+
         style=discord.ButtonStyle.success
+
     )
-    async def dating(self, interaction, button):
+    async def dating(
+
+        self,
+        interaction,
+        button
+
+    ):
+
         if interaction.user.id != self.owner_id:
+
             await interaction.response.send_message(
+
                 "❌ 본인 프로필에서만 사용할 수 있습니다.",
+
                 ephemeral=True
+
             )
+
             return
 
         await interaction.response.send_message(
+
             "`!소개팅` 명령어로 소개팅에 참가할 수 있어요.",
+
             ephemeral=True
+
         )
 
 
@@ -227,50 +261,111 @@ async def profile_command(
         {}
     )
 
-    birth_year = profile.get("age") or member_info.get("birth_year")
-    gender = profile.get("gender") or gender_text(member_info.get("gender"))
-    location = profile.get("location") or "미설정"
-    ideal_type = profile.get("ideal_type") or "미설정"
-    likes = profile.get("likes") or "미설정"
+    birth_year = (
+        profile.get("age")
+        or member_info.get("birth_year")
+    )
+
+    gender = (
+        profile.get("gender")
+        or gender_text(
+            member_info.get("gender")
+        )
+    )
+
+    location = (
+        profile.get("location")
+        or "미설정"
+    )
+
+    ideal_type = (
+        profile.get("ideal_type")
+        or "미설정"
+    )
+
+    likes = (
+        profile.get("likes")
+        or "미설정"
+    )
 
     embed = discord.Embed(
-        title=f"💗 {ctx.author.display_name}님의 프로필",
+
+        title=
+            f"💗 "
+            f"{ctx.author.display_name}"
+            f"님의 프로필",
+
         description=(
-            f"**{birth_year or '나이 미설정'}** · **{gender}**\n"
+
+            f"**{birth_year or '나이 미설정'}** "
+            f"· **{gender}**\n"
+
             f"📍 {location}"
+
         ),
-        color=discord.Color.from_rgb(255, 82, 145)
+
+        color=discord.Color.from_rgb(
+            255,
+            82,
+            145
+        )
+
     )
 
     embed.set_thumbnail(
-        url=ctx.author.display_avatar.url
+
+        url=
+            ctx.author.display_avatar.url
+
     )
 
     embed.add_field(
+
         name="♡ 이상형",
+
         value=ideal_type,
+
         inline=False
+
     )
 
     embed.add_field(
+
         name="🎮 좋아하는 것",
+
         value=likes,
+
         inline=False
+
     )
 
     embed.add_field(
+
         name="💬 소개팅",
-        value="아래 버튼으로 프로필을 수정하거나 소개팅에 참가할 수 있어요.",
+
+        value=
+            "아래 버튼으로 프로필을 "
+            "수정하거나 소개팅에 참가할 수 있어요.",
+
         inline=False
+
     )
 
     embed.set_footer(
-        text="!프로필편집 으로도 수정할 수 있어요."
+
+        text=
+            "!프로필편집 으로도 수정할 수 있어요."
+
     )
 
     await ctx.send(
+
         embed=embed,
-        view=ProfileCardView(ctx.author.id)
+
+        view=ProfileCardView(
+            ctx.author.id
+        )
+
     )
 
 
@@ -285,33 +380,6 @@ async def profile_edit_command(
     ctx
 ):
 
-    await ctx.author.send(
-        "프로필 편집창을 열어드릴게요."
-    )
-
-    try:
-
-        await ctx.send(
-            f"{ctx.author.mention} 📩 DM을 확인해주세요!",
-            delete_after=5
-        )
-
-    except Exception:
-
-        pass
-
-
-    # -----------------------------------------------------
-    # 주의:
-    # prefix 명령어 자체는 interaction이 아니므로
-    # Discord Modal을 직접 열 수 없습니다.
-    #
-    # 따라서 아래 버튼을 사용합니다.
-    # -----------------------------------------------------
-
-    view = ProfileEditView()
-
-
     try:
 
         await ctx.send(
@@ -319,7 +387,7 @@ async def profile_edit_command(
             f"{ctx.author.mention}\n"
             f"아래 버튼을 눌러 프로필을 편집해주세요.",
 
-            view=view
+            view=ProfileEditView()
 
         )
 
@@ -344,31 +412,29 @@ class ProfileEditView(
             timeout=300
         )
 
-
     @discord.ui.button(
 
         label="프로필 편집",
 
         emoji="✏️",
 
-        style=
-        discord.ButtonStyle.primary
+        style=discord.ButtonStyle.primary
 
     )
     async def edit(
 
         self,
 
-        interaction:
-        discord.Interaction,
+        interaction: discord.Interaction,
 
-        button:
-        discord.ui.Button
+        button: discord.ui.Button
 
     ):
 
         await interaction.response.send_modal(
+
             ProfileModal()
+
         )
 
 
@@ -387,7 +453,6 @@ async def profile_delete_command(
         ctx.author.id
     )
 
-
     if uid not in profiles:
 
         await ctx.send(
@@ -396,21 +461,15 @@ async def profile_delete_command(
 
         return
 
-
     profiles.pop(
         uid,
         None
     )
 
-
-    save_json(
-
-        FILES["profiles"],
-
-        profiles
-
+    # PostgreSQL에서 삭제
+    await delete_profile_from_db(
+        uid
     )
-
 
     await ctx.send(
 
@@ -418,6 +477,3 @@ async def profile_delete_command(
         f"프로필을 삭제했습니다."
 
     )
-
-
-# =========================================================
