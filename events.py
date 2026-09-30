@@ -2,6 +2,8 @@ from core import *
 from intro import intro_check, intro_complete, parse_intro
 from dating import DatingLobbyView, DatingView
 
+
+# =========================================================
 # 메시지 이벤트
 # =========================================================
 
@@ -21,13 +23,9 @@ async def on_message(message):
         return
 
     # 활동 기록
-    data = member_data(
-        message.author
-    )
+    data = member_data(message.author)
 
-    data["last_activity"] = iso(
-        now()
-    )
+    data["last_activity"] = iso(now())
 
     # =====================================================
     # 자기소개 감지
@@ -35,19 +33,13 @@ async def on_message(message):
 
     if (
         message.channel.id == INTRO_CHANNEL_ID
-        and not data.get(
-            "intro_completed",
-            False
-        )
+        and not data.get("intro_completed", False)
         and message.author.id not in intro_exceptions
     ):
 
-        result = parse_intro(
-            message.content
-        )
+        result = parse_intro(message.content)
 
         if result:
-
             year, gender = result
 
             await intro_complete(
@@ -56,15 +48,14 @@ async def on_message(message):
                 gender
             )
 
+    # 기존 JSON 저장
     save_json(
         FILES["members"],
         members
     )
 
-    # !명령어 처리
-    await bot.process_commands(
-        message
-    )
+    # 명령어 처리
+    await bot.process_commands(message)
 
 
 # =========================================================
@@ -87,9 +78,9 @@ async def on_ready():
     print("=" * 50)
 
     # 중요:
-    # 여기서 load_data()를 실행하지 않음.
-    # bot.py에서 PostgreSQL 회원 데이터를 불러온 뒤
-    # 다시 JSON으로 덮어쓰는 문제를 방지함.
+    # 여기서 load_data()를 실행하지 않는다.
+    # bot.py에서 PostgreSQL 데이터를 불러온 뒤
+    # JSON 데이터로 다시 덮어쓰는 문제를 방지한다.
 
     global dating_views_registered
 
@@ -116,9 +107,7 @@ async def on_ready():
     # 기존 소개팅 세션 버튼 복구
     for session_id, session in dating_sessions.items():
 
-        if session.get(
-            "status"
-        ) == "active":
+        if session.get("status") == "active":
 
             bot.add_view(
                 DatingView(session_id),
