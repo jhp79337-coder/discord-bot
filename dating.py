@@ -72,9 +72,6 @@ def get_dating_group(member):
     if member.bot:
         return None
 
-    # 중요:
-    # members 딕셔너리를 직접 읽지 않고
-    # 현재 회원 데이터를 가져온다.
     data = member_data(member)
 
     if not data.get(
@@ -156,14 +153,13 @@ def can_dating_match(
         member_b
     )
 
-    # 자기소개 / 연령 / 성별 정보가 없으면 불가
     if not group_a or not group_b:
         return False
 
     if not gender_a or not gender_b:
         return False
 
-    # 성인끼리 또는 미성년자끼리만
+    # 서로 같은 연령 그룹끼리만
     if group_a != group_b:
         return False
 
@@ -973,7 +969,6 @@ class DatingLobbyView(
 
             return
 
-        # 최종 매칭 조건 확인
         if not can_dating_match(
             member,
             opponent
@@ -1105,7 +1100,7 @@ class DatingLobbyView(
         button
     ):
 
-        profile = get_profile(
+        profile_data = get_profile(
             interaction.user.id
         )
 
@@ -1113,39 +1108,45 @@ class DatingLobbyView(
             interaction.user
         )
 
+        age = (
+            profile_data.get("age")
+            or info.get("birth_year")
+            or "미설정"
+        )
+
+        gender = (
+            profile_data.get("gender")
+            or gender_text(
+                info.get("gender")
+            )
+            or "미설정"
+        )
+
+        location = (
+            profile_data.get("location")
+            or "미설정"
+        )
+
+        ideal_type = (
+            profile_data.get("ideal_type")
+            or "미설정"
+        )
+
+        likes = (
+            profile_data.get("likes")
+            or "미설정"
+        )
+
         embed = discord.Embed(
-
-            title=(
-                f"👤 "
-                f"{interaction.user.display_name}"
-            ),
-
+            title=f"👤 {interaction.user.display_name}",
             description=(
-
-                f"**"
-                f"{profile.get('age') "
-                f"or info.get('birth_year') "
-                f"or '미설정'}"
-                f"** · "
-
-                f"**"
-                f"{profile.get('gender') "
-                f"or gender_text(info.get('gender'))}"
-                f"**\n"
-
-                f"📍 "
-                f"{profile.get('location') "
-                f"or '미설정'}\n\n"
-
+                f"**{age}** · **{gender}**\n"
+                f"📍 {location}\n\n"
                 f"♡ 이상형\n"
-                f"{profile.get('ideal_type') "
-                f"or '미설정'}\n\n"
-
+                f"{ideal_type}\n\n"
                 f"🎮 좋아하는 것\n"
-                f"{profile.get('likes') "
-                f"or '미설정'}"
+                f"{likes}"
             ),
-
             color=discord.Color.from_rgb(
                 255,
                 82,
@@ -1251,6 +1252,3 @@ async def dating_command(
         embed=embed,
         view=DatingLobbyView()
     )
-
-
-# =========================================================
