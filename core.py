@@ -9,6 +9,7 @@ import json
 import re
 import random
 import uuid
+import asyncpg
 
 from datetime import datetime, timedelta, timezone
 
