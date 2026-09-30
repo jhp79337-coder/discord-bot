@@ -1,4 +1,5 @@
 from core import *
+from discord.ext import tasks
 
 
 # =========================================================
@@ -40,7 +41,9 @@ async def experience_on_message(message):
             EXP_CHAT,
             "채팅"
         )
-        # =========================================================
+
+
+# =========================================================
 # 내 EXP 확인
 # =========================================================
 
@@ -58,24 +61,20 @@ async def my_exp(ctx):
     if ctx.guild.id != GUILD_ID:
         return
 
-    # 현재 EXP
     current = await get_exp(
         ctx.author.id
     )
 
-    # 목표까지 남은 EXP
     remaining = max(
         0,
         EXP_TARGET - current
     )
 
-    # 진행도
     percent = min(
         100,
         current / EXP_TARGET * 100
     )
 
-    # 진행바
     bar_length = 10
 
     filled = int(
@@ -95,16 +94,28 @@ async def my_exp(ctx):
         f"진행도 : `{percent:.2f}%`\n"
         f"`{progress_bar}`"
     )
+
+
 # =========================================================
 # 관리자 EXP 테스트 지급
 # =========================================================
 
-@bot.command(name="EXP지급")
-async def admin_add_exp(ctx, member: discord.Member, amount: int):
+@bot.command(
+    name="EXP지급"
+)
+async def admin_add_exp(
+    ctx,
+    member: discord.Member,
+    amount: int
+):
 
     # 관리자만 사용
     if not ctx.author.guild_permissions.administrator:
-        await ctx.send("❌ 관리자만 사용할 수 있습니다.")
+
+        await ctx.send(
+            "❌ 관리자만 사용할 수 있습니다."
+        )
+
         return
 
     # 서버 확인
@@ -116,7 +127,11 @@ async def admin_add_exp(ctx, member: discord.Member, amount: int):
 
     # 잘못된 EXP 방지
     if amount <= 0:
-        await ctx.send("❌ EXP는 1 이상 입력해주세요.")
+
+        await ctx.send(
+            "❌ EXP는 1 이상 입력해주세요."
+        )
+
         return
 
     # EXP 지급
@@ -131,3 +146,55 @@ async def admin_add_exp(ctx, member: discord.Member, amount: int):
         f"`{amount:,} EXP`를 지급했습니다.\n"
         f"현재 EXP : `{new_exp:,}`"
     )
+
+
+# =========================================================
+# 음성채널 EXP
+# =========================================================
+
+@tasks.loop(minutes=1)
+async def voice_exp_loop():
+
+    guild = bot.get_guild(
+        GUILD_ID
+    )
+
+    if not guild:
+        return
+
+    for channel in guild.voice_channels:
+
+        for member in channel.members:
+
+            # 봇 무시
+            if member.bot:
+                continue
+
+            # 음성 EXP 지급
+            await add_exp(
+                member,
+                EXP_VOICE_PER_MINUTE,
+                "음성채널"
+            )
+
+
+# =========================================================
+# 음성 EXP 루프 시작 전
+# =========================================================
+
+@voice_exp_loop.before_loop
+async def before_voice_exp_loop():
+
+    await bot.wait_until_ready()
+
+
+# =========================================================
+# 봇 준비 후 음성 EXP 시작
+# =========================================================
+
+@bot.listen("on_ready")
+async def start_voice_exp():
+
+    if not voice_exp_loop.is_running():
+
+        voice_exp_loop.start()
