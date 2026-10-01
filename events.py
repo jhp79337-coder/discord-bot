@@ -1,6 +1,6 @@
 from core import *
-from modules.intro import intro_check, intro_complete, parse_intro
-from modules.dating import DatingLobbyView, DatingView
+from intro import intro_check, intro_complete, parse_intro
+from dating import DatingLobbyView, DatingView
 
 
 # =========================================================

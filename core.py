@@ -123,7 +123,7 @@ FILES = {
         "warnings.json",
 
     "profiles":
-        "data/profiles.json",
+        "profiles.json",
 
     "exceptions":
         "intro_exceptions.json",
