@@ -5,12 +5,7 @@
 
 from core import *
 
-import intro
-import profile
-import moderation
-import dating
-import events
-import experience
+from modules import intro, profile, moderation, dating, events, experience, backup, status
 
 
 # =========================================================
@@ -35,6 +30,9 @@ async def main():
     # PostgreSQL에서 프로필 불러오기
     await load_profiles_from_db()
 
+    # PostgreSQL에 저장된 경고/소개팅/예외 상태 복원
+    await backup.load_runtime_state_from_db()
+
     if not TOKEN:
 
         raise RuntimeError(
@@ -44,6 +42,8 @@ async def main():
     print(
         "[BOT] Discord 연결 중..."
     )
+
+    backup.start_backup_loop()
 
     await bot.start(
         TOKEN

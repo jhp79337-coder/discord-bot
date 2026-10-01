@@ -61,9 +61,6 @@ INTRO_MINUTES = 30
 # 2007년생까지 성인
 ADULT_CUTOFF = 2007
 
-# 2012년생부터 이용 제한
-MIN_ALLOWED_BIRTH_YEAR = 2012
-
 
 # =========================================================
 # 역할 ID
@@ -259,6 +256,18 @@ def save_json(filename, data):
             temp,
             filename
         )
+
+        # 경고/소개팅/예외 데이터는 PostgreSQL 스냅샷에도 저장한다.
+        if filename in (
+            FILES["warnings"],
+            FILES["exceptions"],
+            FILES["dating"]
+        ):
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(persist_runtime_state())
+            except RuntimeError:
+                pass
 
     except Exception as e:
 

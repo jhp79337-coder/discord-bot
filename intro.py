@@ -179,10 +179,6 @@ async def intro_complete(
     member = message.author
 
     # -----------------------------------------------------
-    # 연령 제한 없음
-    # -----------------------------------------------------
-
-    # -----------------------------------------------------
     # 회원 데이터
     # -----------------------------------------------------
 
@@ -252,222 +248,35 @@ async def intro_complete(
 
 
 # =========================================================
-# 추방 확인 버튼
+# 자기소개 미작성 자동 추방
 # =========================================================
 
-class KickView(
-    discord.ui.View
-):
-
-    def __init__(
-        self,
-        member
-    ):
-
-        super().__init__(
-            timeout=300
-        )
-
-        self.member = member
-
-    async def on_timeout(
-        self
-    ):
-
-        pending_kicks.discard(
-            self.member.id
-        )
-
-    @discord.ui.button(
-        label="예, 추방하기",
-        style=discord.ButtonStyle.danger
-    )
-    async def confirm(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        if not interaction.user.guild_permissions.administrator:
-
-            await interaction.response.send_message(
-                "❌ 관리자만 사용할 수 있습니다.",
-                ephemeral=True
-            )
-
-            return
-
-        member = interaction.guild.get_member(
-            self.member.id
-        )
-
-        if not member:
-
-            await interaction.response.edit_message(
-                content="❌ 회원을 찾을 수 없습니다.",
-                view=None
-            )
-
-            return
-
-        data = member_data(
-            member
-        )
-
-        if data.get(
-            "intro_completed",
-            False
-        ):
-
-            pending_kicks.discard(
-                member.id
-            )
-
-            await interaction.response.edit_message(
-                content=(
-                    f"✅ {member.mention}님은 "
-                    f"이미 자기소개를 완료했습니다."
-                ),
-                view=None
-            )
-
-            return
-
-        try:
-
-            await member.kick(
-                reason="자기소개 미작성"
-            )
-
-            data["kicked"] = True
-
-            # PostgreSQL 저장
-            await save_member_to_db(
-                member.id,
-                data
-            )
-
-            pending_kicks.discard(
-                member.id
-            )
-
-            await interaction.response.edit_message(
-                content=(
-                    f"🚪 {member.mention}님을 "
-                    f"자기소개 미작성으로 추방했습니다."
-                ),
-                view=None
-            )
-
-        except Exception as e:
-
-            print(
-                f"[KICK ERROR] {e}"
-            )
-
-            await interaction.response.send_message(
-                "❌ 추방 처리 실패",
-                ephemeral=True
-            )
-
-    @discord.ui.button(
-        label="취소",
-        style=discord.ButtonStyle.secondary
-    )
-    async def cancel(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        if not interaction.user.guild_permissions.administrator:
-
-            await interaction.response.send_message(
-                "❌ 관리자만 사용할 수 있습니다.",
-                ephemeral=True
-            )
-
-            return
-
-        pending_kicks.discard(
-            self.member.id
-        )
-
-        await interaction.response.edit_message(
-            content=(
-                f"❎ {self.member.mention}님의 "
-                f"추방 처리를 취소했습니다."
-            ),
-            view=None
-        )
-
-
-# =========================================================
-# 추방 확인
-# =========================================================
-
-async def send_kick_review(
-    guild,
-    member
-):
-
-    # 자기소개 제외 회원
+async def auto_kick_no_intro(guild, member):
 
     if member.id in intro_exceptions:
         return
 
-    # 이미 대기 중
+    data = member_data(member)
 
-    if member.id in pending_kicks:
+    if data.get("intro_completed", False):
         return
-
-    data = member_data(
-        member
-    )
-
-    if data.get(
-        "intro_completed",
-        False
-    ):
-        return
-
-    log = get_log_channel(
-        guild
-    )
-
-    if not log:
-        return
-
-    pending_kicks.add(
-        member.id
-    )
 
     try:
+        await member.kick(reason="자기소개 미작성")
 
-        await log.send(
+        data["kicked"] = True
+        await save_member_to_db(member.id, data)
+        pending_kicks.discard(member.id)
 
-            f"⚠️ **자기소개 미작성 확인**\n\n"
-
-            f"회원: {member.mention}\n"
-
-            f"입장 후 "
-            f"`{INTRO_MINUTES}분` 경과\n\n"
-
-            f"추방 여부를 선택해주세요.",
-
-            view=KickView(member)
-
-        )
+        log = get_log_channel(guild)
+        if log:
+            await log.send(
+                f"🚪 {member.mention}님을 자기소개 미작성으로 자동 추방했습니다.\n"
+                f"입장 후 `{INTRO_MINUTES}분`이 지나도록 자기소개를 작성하지 않았습니다."
+            )
 
     except Exception as e:
-
-        pending_kicks.discard(
-            member.id
-        )
-
-        print(
-            f"[KICK REVIEW ERROR] {e}"
-        )
+        print(f"[AUTO KICK ERROR] {e}")
 
 
 # =========================================================
@@ -532,7 +341,7 @@ async def intro_check():
         if elapsed < INTRO_MINUTES * 60:
             continue
 
-        await send_kick_review(
+        await auto_kick_no_intro(
             guild,
             member
         )
