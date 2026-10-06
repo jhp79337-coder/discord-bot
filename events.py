@@ -1,3 +1,4 @@
+```python
 from core import *
 from intro import intro_check, intro_complete, parse_intro
 from dating import DatingLobbyView, DatingView
@@ -31,9 +32,11 @@ async def on_message(message):
     # 자기소개 감지
     # =====================================================
 
+    # 이미 자기소개를 완료한 회원도
+    # 다시 자기소개를 작성하면 정보를 수정할 수 있도록
+    # intro_completed 조건을 제거한다.
     if (
         message.channel.id == INTRO_CHANNEL_ID
-        and not data.get("intro_completed", False)
         and message.author.id not in intro_exceptions
     ):
 
@@ -172,3 +175,4 @@ async def on_command_error(
         f"{type(error).__name__}: "
         f"{error}"
     )
+```
