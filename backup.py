@@ -126,17 +126,27 @@ async def load_runtime_state_from_db():
         except (TypeError, ValueError):
             pass
 
+    # 소개팅 대기열은 최신 DB 스냅샷으로 무조건 덮어쓰지 않는다.
+    # 오래된 백업 때문에 현재 대기자가 사라지는 문제를 방지한다.
     dating = data.get("dating", {})
-    dating_queue = []
-    for value in dating.get("queue", []):
-        try:
-            dating_queue.append(int(value))
-        except (TypeError, ValueError):
-            pass
 
-    dating_sessions = dating.get("sessions", {})
-    if not isinstance(dating_sessions, dict):
-        dating_sessions = {}
+    if not dating_queue:
+        restored_queue = []
+        for value in dating.get("queue", []):
+            try:
+                restored_queue.append(int(value))
+            except (TypeError, ValueError):
+                pass
+        dating_queue = restored_queue
+
+    # 진행 중인 세션도 현재 메모리에 이미 있으면 유지한다.
+    if not dating_sessions:
+        restored_sessions = dating.get("sessions", {})
+        dating_sessions = (
+            restored_sessions
+            if isinstance(restored_sessions, dict)
+            else {}
+        )
 
     print("[DB] 경고/소개팅/예외 데이터 스냅샷 복원 완료")
 

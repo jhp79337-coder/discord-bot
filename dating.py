@@ -84,10 +84,9 @@ def get_dating_group(member):
         "birth_year"
     )
 
-    if not isinstance(
-        birth_year,
-        int
-    ):
+    try:
+        birth_year = int(birth_year)
+    except (TypeError, ValueError):
         return None
 
     # 2007년생까지 성인
@@ -118,6 +117,8 @@ def get_dating_gender(member):
     gender = data.get(
         "gender"
     )
+
+    gender = str(gender).strip()
 
     if gender not in (
         "남",
@@ -154,19 +155,40 @@ def can_dating_match(
     )
 
     if not group_a or not group_b:
+        print(
+            f"[DATING MATCH] 연령 그룹 확인 실패: "
+            f"{member_a.id}={group_a}, {member_b.id}={group_b}"
+        )
         return False
 
     if not gender_a or not gender_b:
+        print(
+            f"[DATING MATCH] 성별 확인 실패: "
+            f"{member_a.id}={gender_a}, {member_b.id}={gender_b}"
+        )
         return False
 
     # 서로 같은 연령 그룹끼리만
     if group_a != group_b:
+        print(
+            f"[DATING MATCH] 연령 그룹 불일치: "
+            f"{member_a.id}={group_a}, {member_b.id}={group_b}"
+        )
         return False
 
     # 같은 성별 매칭 방지
     if gender_a == gender_b:
+        print(
+            f"[DATING MATCH] 같은 성별: "
+            f"{member_a.id}={gender_a}, {member_b.id}={gender_b}"
+        )
         return False
 
+    print(
+        f"[DATING MATCH] 매칭 가능: "
+        f"{member_a.id}({group_a}/{gender_a}) ↔ "
+        f"{member_b.id}({group_b}/{gender_b})"
+    )
     return True
 
 

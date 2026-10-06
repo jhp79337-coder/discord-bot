@@ -232,7 +232,7 @@ async def intro_complete(
     await message.channel.send(
 
         f"🖤 {member.mention} "
-        f"자기소개 확인했어요 ♡\n\n"
+        f"자기소개 정보를 반영했어요 ♡\n\n"
 
         f"`{year}년생` · "
         f"`{gender_text(gender)}` · "
