@@ -1,3 +1,4 @@
+```python
 from core import *
 
 
@@ -211,10 +212,6 @@ async def intro_complete(
         data
     )
 
-    pending_kicks.discard(
-        member.id
-    )
-
     # -----------------------------------------------------
     # 역할
     # -----------------------------------------------------
@@ -245,106 +242,6 @@ async def intro_complete(
         f"에서 편하게 놀아요!"
 
     )
-
-
-# =========================================================
-# 자기소개 미작성 자동 추방
-# =========================================================
-
-async def auto_kick_no_intro(guild, member):
-
-    if member.id in intro_exceptions:
-        return
-
-    data = member_data(member)
-
-    if data.get("intro_completed", False):
-        return
-
-    try:
-        await member.kick(reason="자기소개 미작성")
-
-        data["kicked"] = True
-        await save_member_to_db(member.id, data)
-        pending_kicks.discard(member.id)
-
-        log = get_log_channel(guild)
-        if log:
-            await log.send(
-                f"🚪 {member.mention}님을 자기소개 미작성으로 자동 추방했습니다.\n"
-                f"입장 후 `{INTRO_MINUTES}분`이 지나도록 자기소개를 작성하지 않았습니다."
-            )
-
-    except Exception as e:
-        print(f"[AUTO KICK ERROR] {e}")
-
-
-# =========================================================
-# 자기소개 시간 체크
-# =========================================================
-
-@tasks.loop(
-    minutes=1
-)
-async def intro_check():
-
-    guild = bot.get_guild(
-        GUILD_ID
-    )
-
-    if not guild:
-        return
-
-    current = now()
-
-    for member in guild.members:
-
-        if member.bot:
-            continue
-
-        # 제외 회원
-
-        if member.id in intro_exceptions:
-            continue
-
-        data = member_data(
-            member
-        )
-
-        if data.get(
-            "intro_completed",
-            False
-        ):
-            continue
-
-        # 기존 회원 제외
-
-        if data.get(
-            "is_existing_member",
-            True
-        ):
-            continue
-
-        joined = parse_dt(
-            data.get(
-                "joined_at"
-            )
-        )
-
-        if not joined:
-            continue
-
-        elapsed = (
-            current - joined
-        ).total_seconds()
-
-        if elapsed < INTRO_MINUTES * 60:
-            continue
-
-        await auto_kick_no_intro(
-            guild,
-            member
-        )
 
 
 # =========================================================
@@ -393,6 +290,7 @@ async def on_member_join(
         members[str(member.id)]
     )
 
+    # 미인증 역할 지급
     await manage_role(
         member,
         ROLES["unverified"],
@@ -402,3 +300,4 @@ async def on_member_join(
     print(
         f"[JOIN] {member}"
     )
+```
