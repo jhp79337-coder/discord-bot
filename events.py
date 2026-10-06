@@ -1,3 +1,4 @@
+from core import *
 from intro import intro_complete, parse_intro
 from dating import DatingLobbyView, DatingView
 
@@ -9,27 +10,20 @@ from dating import DatingLobbyView, DatingView
 @bot.event
 async def on_message(message):
 
-    # 봇 무시
     if message.author.bot:
         return
 
-    # DM 무시
     if not message.guild:
         return
 
-    # 지정 서버만
     if message.guild.id != GUILD_ID:
         return
 
-    # 활동 기록
     data = member_data(message.author)
 
     data["last_activity"] = iso(now())
 
-    # =====================================================
     # 자기소개 감지
-    # =====================================================
-
     if (
         message.channel.id == INTRO_CHANNEL_ID
         and message.author.id not in intro_exceptions
@@ -46,13 +40,11 @@ async def on_message(message):
                 gender
             )
 
-    # 기존 JSON 저장
     save_json(
         FILES["members"],
         members
     )
 
-    # 명령어 처리
     await bot.process_commands(message)
 
 
@@ -64,21 +56,9 @@ async def on_message(message):
 async def on_ready():
 
     print("=" * 50)
-
-    print(
-        f"로그인 완료 : {bot.user}"
-    )
-
-    print(
-        f"서버 수 : {len(bot.guilds)}"
-    )
-
+    print(f"로그인 완료 : {bot.user}")
+    print(f"서버 수 : {len(bot.guilds)}")
     print("=" * 50)
-
-    # 중요:
-    # 여기서 load_data()를 실행하지 않는다.
-    # bot.py에서 PostgreSQL 데이터를 불러온 뒤
-    # JSON 데이터로 다시 덮어쓰는 문제를 방지한다.
 
     global dating_views_registered
 
@@ -90,16 +70,10 @@ async def on_ready():
 
         dating_views_registered = True
 
-    guild = bot.get_guild(
-        GUILD_ID
-    )
+    guild = bot.get_guild(GUILD_ID)
 
     if not guild:
-
-        print(
-            "❌ 서버를 찾을 수 없음"
-        )
-
+        print("❌ 서버를 찾을 수 없음")
         return
 
     # 기존 소개팅 세션 버튼 복구
@@ -122,16 +96,12 @@ async def on_ready():
 # =========================================================
 
 @bot.event
-async def on_command_error(
-    ctx,
-    error
-):
+async def on_command_error(ctx, error):
 
     if isinstance(
         error,
         commands.CommandNotFound
     ):
-
         return
 
     if isinstance(
@@ -161,4 +131,3 @@ async def on_command_error(
         f"{type(error).__name__}: "
         f"{error}"
     )
-```
