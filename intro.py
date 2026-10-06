@@ -8,7 +8,6 @@ from core import *
 
 def parse_intro(text):
 
-```
 text = text.strip()
 
 # -----------------------------------------------------
@@ -95,7 +94,6 @@ return (
     year,
     gender
 )
-```
 
 # =========================================================
 
@@ -109,7 +107,6 @@ year,
 gender
 ):
 
-```
 # 기존 역할 제거
 
 for key in (
@@ -169,7 +166,7 @@ await manage_role(
     ROLES["intro_complete"],
     True
 )
-```
+
 
 # =========================================================
 
@@ -183,7 +180,6 @@ year,
 gender
 ):
 
-```
 member = message.author
 
 # -----------------------------------------------------
@@ -254,7 +250,6 @@ await message.channel.send(
     f"에서 편하게 놀아요!"
 
 )
-```
 
 # =========================================================
 
@@ -267,7 +262,6 @@ async def on_member_join(
 member
 ):
 
-```
 if member.guild.id != GUILD_ID:
     return
 
@@ -315,4 +309,3 @@ await manage_role(
 print(
     f"[JOIN] {member}"
 )
-```
