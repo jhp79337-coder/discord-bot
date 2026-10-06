@@ -86,14 +86,15 @@ def get_dating_group(member):
 
     try:
         birth_year = int(birth_year)
+
     except (TypeError, ValueError):
         return None
 
-    # 2007년생까지 성인
+    # 성인
     if birth_year <= ADULT_CUTOFF:
         return "adult"
 
-    # 2008년생 이후는 미성년 그룹
+    # 미성년
     return "minor"
 
 
@@ -118,6 +119,9 @@ def get_dating_gender(member):
         "gender"
     )
 
+    if gender is None:
+        return None
+
     gender = str(gender).strip()
 
     if gender not in (
@@ -138,6 +142,10 @@ def can_dating_match(
     member_b
 ):
 
+    # 같은 사람 방지
+    if member_a.id == member_b.id:
+        return False
+
     group_a = get_dating_group(
         member_a
     )
@@ -154,34 +162,65 @@ def can_dating_match(
         member_b
     )
 
+    # 자기소개 확인
     if not group_a or not group_b:
+
         print(
             f"[DATING MATCH] 연령 그룹 확인 실패: "
-            f"{member_a.id}={group_a}, {member_b.id}={group_b}"
+            f"{member_a.id}={group_a}, "
+            f"{member_b.id}={group_b}"
         )
+
         return False
 
+    # 성별 확인
     if not gender_a or not gender_b:
+
         print(
             f"[DATING MATCH] 성별 확인 실패: "
-            f"{member_a.id}={gender_a}, {member_b.id}={gender_b}"
+            f"{member_a.id}={gender_a}, "
+            f"{member_b.id}={gender_b}"
         )
+
         return False
 
-    # 서로 같은 연령 그룹끼리만
+    # 같은 연령 그룹끼리만
     if group_a != group_b:
+
         print(
             f"[DATING MATCH] 연령 그룹 불일치: "
-            f"{member_a.id}={group_a}, {member_b.id}={group_b}"
+            f"{member_a.id}={group_a}, "
+            f"{member_b.id}={group_b}"
         )
+
         return False
 
-    # 같은 성별 매칭 방지
-    if gender_a == gender_b:
-        print(
-            f"[DATING MATCH] 같은 성별: "
-            f"{member_a.id}={gender_a}, {member_b.id}={gender_b}"
+    # =====================================================
+    # 남자 ↔ 여자만 허용
+    # =====================================================
+
+    valid_gender_pair = (
+        (
+            gender_a == "남"
+            and
+            gender_b == "여"
         )
+        or
+        (
+            gender_a == "여"
+            and
+            gender_b == "남"
+        )
+    )
+
+    if not valid_gender_pair:
+
+        print(
+            f"[DATING MATCH] 이성 매칭 아님: "
+            f"{member_a.id}={gender_a}, "
+            f"{member_b.id}={gender_b}"
+        )
+
         return False
 
     print(
@@ -189,6 +228,7 @@ def can_dating_match(
         f"{member_a.id}({group_a}/{gender_a}) ↔ "
         f"{member_b.id}({group_b}/{gender_b})"
     )
+
     return True
 
 
@@ -978,6 +1018,7 @@ class DatingLobbyView(
         if not opponent:
 
             if opponent_id not in dating_queue:
+
                 dating_queue.append(
                     opponent_id
                 )
@@ -991,17 +1032,20 @@ class DatingLobbyView(
 
             return
 
+        # 최종 매칭 조건 재확인
         if not can_dating_match(
             member,
             opponent
         ):
 
             if opponent_id not in dating_queue:
+
                 dating_queue.append(
                     opponent_id
                 )
 
             if member.id not in dating_queue:
+
                 dating_queue.append(
                     member.id
                 )
@@ -1015,6 +1059,7 @@ class DatingLobbyView(
 
             return
 
+        # 채널 생성
         result = await create_dating_channel(
             interaction.guild,
             member,
@@ -1254,8 +1299,8 @@ async def dating_command(
             f"💗 현재 대기자 "
             f"**{queue_count}명**\n\n"
 
-            "⚠️ 연령대가 다른 회원끼리는 "
-            "매칭되지 않습니다."
+            "⚠️ 같은 연령 그룹의 "
+            "서로 다른 성별 회원끼리 매칭됩니다."
 
         ),
 
