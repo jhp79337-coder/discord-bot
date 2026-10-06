@@ -1,6 +1,6 @@
 ```python
 from core import *
-from intro import intro_check, intro_complete, parse_intro
+from intro import intro_complete, parse_intro
 from dating import DatingLobbyView, DatingView
 
 
@@ -32,9 +32,6 @@ async def on_message(message):
     # 자기소개 감지
     # =====================================================
 
-    # 이미 자기소개를 완료한 회원도
-    # 다시 자기소개를 작성하면 정보를 수정할 수 있도록
-    # intro_completed 조건을 제거한다.
     if (
         message.channel.id == INTRO_CHANNEL_ID
         and message.author.id not in intro_exceptions
@@ -120,15 +117,6 @@ async def on_ready():
     print(
         f"[SERVER] {guild.name}"
     )
-
-    # 자기소개 체크
-    if not intro_check.is_running():
-
-        intro_check.start()
-
-        print(
-            "[CHECK] 자기소개 감시 시작"
-        )
 
 
 # =========================================================
