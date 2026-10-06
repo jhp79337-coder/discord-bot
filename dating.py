@@ -69,20 +69,18 @@ def dating_member_session(member_id):
 
 def get_dating_group(member):
 
+    if not member:
+        return None
+
     if member.bot:
         return None
 
     data = member_data(member)
 
-    if not data.get(
-        "intro_completed",
-        False
-    ):
+    if not data.get("intro_completed", False):
         return None
 
-    birth_year = data.get(
-        "birth_year"
-    )
+    birth_year = data.get("birth_year")
 
     try:
         birth_year = int(birth_year)
@@ -104,33 +102,51 @@ def get_dating_group(member):
 
 def get_dating_gender(member):
 
+    if not member:
+        return None
+
     if member.bot:
         return None
 
     data = member_data(member)
 
-    if not data.get(
-        "intro_completed",
-        False
-    ):
+    if not data.get("intro_completed", False):
         return None
 
-    gender = data.get(
-        "gender"
-    )
+    gender = data.get("gender")
 
     if gender is None:
         return None
 
     gender = str(gender).strip()
 
-    if gender not in (
+    # 남자
+    if gender in (
         "남",
-        "여"
+        "남자",
+        "ㄴ",
+        "M",
+        "m",
+        "male",
+        "Male",
+        "MALE"
     ):
-        return None
+        return "남"
 
-    return gender
+    # 여자
+    if gender in (
+        "여",
+        "여자",
+        "ㅇ",
+        "F",
+        "f",
+        "female",
+        "Female",
+        "FEMALE"
+    ):
+        return "여"
+
+    return None
 
 
 # =========================================================
@@ -142,9 +158,28 @@ def can_dating_match(
     member_b
 ):
 
+    # -----------------------------------------------------
+    # 기본 확인
+    # -----------------------------------------------------
+
+    if not member_a or not member_b:
+        return False
+
     # 같은 사람 방지
     if member_a.id == member_b.id:
+        print(
+            f"[DATING MATCH] 같은 사용자라 매칭 불가: "
+            f"{member_a.id}"
+        )
         return False
+
+    # 봇 방지
+    if member_a.bot or member_b.bot:
+        return False
+
+    # -----------------------------------------------------
+    # 연령 그룹
+    # -----------------------------------------------------
 
     group_a = get_dating_group(
         member_a
@@ -154,6 +189,10 @@ def can_dating_match(
         member_b
     )
 
+    # -----------------------------------------------------
+    # 성별
+    # -----------------------------------------------------
+
     gender_a = get_dating_gender(
         member_a
     )
@@ -162,74 +201,99 @@ def can_dating_match(
         member_b
     )
 
-    # 자기소개 확인
+    print(
+        f"[DATING CHECK] "
+        f"{member_a.display_name} "
+        f"({member_a.id}) = "
+        f"{group_a}/{gender_a} | "
+        f"{member_b.display_name} "
+        f"({member_b.id}) = "
+        f"{group_b}/{gender_b}"
+    )
+
+    # -----------------------------------------------------
+    # 자기소개 / 연령 확인
+    # -----------------------------------------------------
+
     if not group_a or not group_b:
 
         print(
-            f"[DATING MATCH] 연령 그룹 확인 실패: "
+            f"[DATING MATCH] "
+            f"연령 그룹 확인 실패: "
             f"{member_a.id}={group_a}, "
             f"{member_b.id}={group_b}"
         )
 
         return False
 
+    # -----------------------------------------------------
     # 성별 확인
+    # -----------------------------------------------------
+
     if not gender_a or not gender_b:
 
         print(
-            f"[DATING MATCH] 성별 확인 실패: "
+            f"[DATING MATCH] "
+            f"성별 확인 실패: "
             f"{member_a.id}={gender_a}, "
             f"{member_b.id}={gender_b}"
         )
 
         return False
 
-    # 같은 연령 그룹끼리만
+    # -----------------------------------------------------
+    # 같은 연령 그룹만 허용
+    # -----------------------------------------------------
+
     if group_a != group_b:
 
         print(
-            f"[DATING MATCH] 연령 그룹 불일치: "
+            f"[DATING MATCH] "
+            f"연령 그룹 불일치: "
             f"{member_a.id}={group_a}, "
             f"{member_b.id}={group_b}"
         )
 
         return False
 
-    # =====================================================
+    # -----------------------------------------------------
     # 남자 ↔ 여자만 허용
-    # =====================================================
+    # -----------------------------------------------------
 
-    valid_gender_pair = (
-        (
-            gender_a == "남"
-            and
-            gender_b == "여"
-        )
-        or
-        (
-            gender_a == "여"
-            and
-            gender_b == "남"
-        )
-    )
-
-    if not valid_gender_pair:
+    if gender_a == "남" and gender_b == "여":
 
         print(
-            f"[DATING MATCH] 이성 매칭 아님: "
-            f"{member_a.id}={gender_a}, "
-            f"{member_b.id}={gender_b}"
+            f"[DATING MATCH] "
+            f"매칭 가능: "
+            f"{member_a.id}({group_a}/{gender_a}) ↔ "
+            f"{member_b.id}({group_b}/{gender_b})"
         )
 
-        return False
+        return True
+
+    if gender_a == "여" and gender_b == "남":
+
+        print(
+            f"[DATING MATCH] "
+            f"매칭 가능: "
+            f"{member_a.id}({group_a}/{gender_a}) ↔ "
+            f"{member_b.id}({group_b}/{gender_b})"
+        )
+
+        return True
+
+    # -----------------------------------------------------
+    # 남자 ↔ 남자 / 여자 ↔ 여자 차단
+    # -----------------------------------------------------
 
     print(
-        f"[DATING MATCH] 매칭 가능: "
-        f"{member_a.id}({group_a}/{gender_a}) ↔ "
-        f"{member_b.id}({group_b}/{gender_b})"
+        f"[DATING MATCH] "
+        f"동성 매칭 차단: "
+        f"{member_a.id}={gender_a}, "
+        f"{member_b.id}={gender_b}"
     )
 
-    return True
+    return False
 
 
 # =========================================================
@@ -271,6 +335,23 @@ async def create_dating_channel(
     member_a,
     member_b
 ):
+
+    # -----------------------------------------------------
+    # 채널 만들기 전에 최종 매칭 검사
+    # -----------------------------------------------------
+
+    if not can_dating_match(
+        member_a,
+        member_b
+    ):
+
+        print(
+            f"[DATING BLOCK] "
+            f"잘못된 매칭 시도 차단: "
+            f"{member_a.id} / {member_b.id}"
+        )
+
+        return None
 
     category = await get_dating_category(
         guild
@@ -757,6 +838,9 @@ class DatingView(
 
         session = self.get_session()
 
+        if not session:
+            return
+
         likes = session.setdefault(
             "likes",
             []
@@ -783,7 +867,7 @@ class DatingView(
 
                 f"🎉 **서로 호감이 확인됐어요!**\n\n"
                 f"💗 {interaction.user.mention} × "
-                f"{opponent.mention}\n"
+                f"{opponent.mention}\n\n"
                 "두 분 모두 서로에게 호감을 보냈습니다!",
 
                 ephemeral=False
@@ -908,6 +992,10 @@ class DatingLobbyView(
 
         member = interaction.user
 
+        # -------------------------------------------------
+        # 참가자 본인 확인
+        # -------------------------------------------------
+
         member_group = get_dating_group(
             member
         )
@@ -932,6 +1020,10 @@ class DatingLobbyView(
 
             return
 
+        # -------------------------------------------------
+        # 이미 소개팅 중인지 확인
+        # -------------------------------------------------
+
         active_id, _ = dating_member_session(
             member.id
         )
@@ -945,6 +1037,10 @@ class DatingLobbyView(
 
             return
 
+        # -------------------------------------------------
+        # 이미 대기열에 있는지 확인
+        # -------------------------------------------------
+
         if member.id in dating_queue:
 
             await interaction.response.send_message(
@@ -954,13 +1050,21 @@ class DatingLobbyView(
 
             return
 
+        # -------------------------------------------------
+        # 대기열에 추가
+        # -------------------------------------------------
+
         dating_queue.append(
             member.id
         )
 
         candidates = []
 
-        for uid in dating_queue:
+        # -------------------------------------------------
+        # 대기열 검사
+        # -------------------------------------------------
+
+        for uid in list(dating_queue):
 
             if uid == member.id:
                 continue
@@ -969,8 +1073,31 @@ class DatingLobbyView(
                 uid
             )
 
+            # 서버를 나간 사용자 제거
             if not opponent:
+
+                try:
+
+                    dating_queue.remove(
+                        uid
+                    )
+
+                except ValueError:
+                    pass
+
                 continue
+
+            # 이미 소개팅 중이면 후보에서 제외
+            active_opponent_id, _ = dating_member_session(
+                opponent.id
+            )
+
+            if active_opponent_id:
+                continue
+
+            # -------------------------------------------------
+            # 남자↔여자 + 같은 연령 그룹 검사
+            # -------------------------------------------------
 
             if can_dating_match(
                 member,
@@ -980,6 +1107,10 @@ class DatingLobbyView(
                 candidates.append(
                     uid
                 )
+
+        # -------------------------------------------------
+        # 조건에 맞는 상대가 없음
+        # -------------------------------------------------
 
         opponent_id = (
             random.choice(candidates)
@@ -1003,13 +1134,9 @@ class DatingLobbyView(
 
             return
 
-        dating_queue.remove(
-            member.id
-        )
-
-        dating_queue.remove(
-            opponent_id
-        )
+        # -------------------------------------------------
+        # 상대 확인
+        # -------------------------------------------------
 
         opponent = interaction.guild.get_member(
             opponent_id
@@ -1017,38 +1144,32 @@ class DatingLobbyView(
 
         if not opponent:
 
-            if opponent_id not in dating_queue:
+            try:
 
-                dating_queue.append(
+                dating_queue.remove(
                     opponent_id
                 )
+
+            except ValueError:
+                pass
 
             save_dating_data()
 
             await interaction.response.send_message(
-                "⏳ 상대를 찾지 못해서 다시 대기열로 돌렸어요.",
+                "⏳ 상대를 찾지 못해서 대기열을 정리했어요.",
                 ephemeral=True
             )
 
             return
 
+        # -------------------------------------------------
         # 최종 매칭 조건 재확인
+        # -------------------------------------------------
+
         if not can_dating_match(
             member,
             opponent
         ):
-
-            if opponent_id not in dating_queue:
-
-                dating_queue.append(
-                    opponent_id
-                )
-
-            if member.id not in dating_queue:
-
-                dating_queue.append(
-                    member.id
-                )
 
             save_dating_data()
 
@@ -1059,7 +1180,32 @@ class DatingLobbyView(
 
             return
 
+        # -------------------------------------------------
+        # 여기까지 왔을 때만 대기열에서 제거
+        # -------------------------------------------------
+
+        try:
+
+            dating_queue.remove(
+                member.id
+            )
+
+        except ValueError:
+            pass
+
+        try:
+
+            dating_queue.remove(
+                opponent.id
+            )
+
+        except ValueError:
+            pass
+
+        # -------------------------------------------------
         # 채널 생성
+        # -------------------------------------------------
+
         result = await create_dating_channel(
             interaction.guild,
             member,
@@ -1068,12 +1214,15 @@ class DatingLobbyView(
 
         if not result:
 
-            dating_queue.extend(
-                [
-                    member.id,
+            if member.id not in dating_queue:
+                dating_queue.append(
+                    member.id
+                )
+
+            if opponent.id not in dating_queue:
+                dating_queue.append(
                     opponent.id
-                ]
-            )
+                )
 
             save_dating_data()
 
@@ -1088,6 +1237,10 @@ class DatingLobbyView(
             return
 
         session_id, channel = result
+
+        # -------------------------------------------------
+        # 참가자에게 매칭 완료
+        # -------------------------------------------------
 
         await interaction.response.send_message(
 
@@ -1108,6 +1261,10 @@ class DatingLobbyView(
         except Exception:
             pass
 
+        # -------------------------------------------------
+        # 소개팅 채널 첫 메시지
+        # -------------------------------------------------
+
         await channel.send(
 
             f"💗 **소개팅 매칭 완료!**\n\n"
@@ -1115,7 +1272,7 @@ class DatingLobbyView(
             f"{opponent.mention}\n\n"
 
             "이 채널은 두 분과 봇만 볼 수 있는 "
-            "전용 채팅방입니다.\n"
+            "전용 채팅방입니다.\n\n"
 
             f"💭 **첫 질문:** "
             f"「{random.choice(DATING_QUESTIONS)}」",
