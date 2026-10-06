@@ -1,5 +1,3 @@
-```python
-from core import *
 from intro import intro_complete, parse_intro
 from dating import DatingLobbyView, DatingView
 
