@@ -1,3 +1,4 @@
+
 # =========================================================
 # Discord Server Management Bot
 # 분리된 메인 실행 파일
@@ -5,7 +6,15 @@
 
 from core import *
 
-import intro, profile, moderation, dating, events, experience, backup, status, romance
+import intro
+import profile
+import moderation
+import dating
+import events
+import experience
+import backup
+import status
+import romance
 
 
 # =========================================================
@@ -24,6 +33,9 @@ async def main():
     # PostgreSQL 연결
     await init_database()
 
+    # 연애 시스템 데이터베이스 초기화
+    await romance.init_romance_database()
+
     # PostgreSQL에서 회원 / 자기소개 데이터 불러오기
     await load_members_from_db()
 
@@ -33,8 +45,8 @@ async def main():
     # PostgreSQL에 저장된 경고/소개팅/예외 상태 복원
     await backup.load_runtime_state_from_db()
 
+    # 봇 토큰 확인
     if not TOKEN:
-
         raise RuntimeError(
             "DISCORD_TOKEN이 없습니다."
         )
@@ -43,8 +55,10 @@ async def main():
         "[BOT] Discord 연결 중..."
     )
 
+    # 자동 백업 시작
     backup.start_backup_loop()
 
+    # Discord 봇 실행
     await bot.start(
         TOKEN
     )
