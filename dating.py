@@ -937,3 +937,50 @@ async def dating_command(ctx):
         embed=build_dating_lobby_embed(),
         view=DatingLobbyView()
     )
+
+# =========================================================
+# 고백 취소
+# =========================================================
+
+@bot.command(name="고백취소")
+async def cancel_confession(ctx):
+    if core.db_pool is None:
+        await ctx.send("❌ 데이터베이스에 연결되지 않았어요.")
+        return
+
+    async with core.db_pool.acquire() as conn:
+        # 내가 보낸 고백 중 가장 최근의 대기 중인 고백 취소
+        row = await conn.fetchrow(
+            """
+            DELETE FROM romance_confessions
+            WHERE recipient_id = (
+                SELECT recipient_id
+                FROM romance_confessions
+                WHERE sender_id = $1
+                ORDER BY created_at DESC
+                LIMIT 1
+            )
+            AND sender_id = $1
+            RETURNING recipient_id
+            """,
+            ctx.author.id
+        )
+
+    if row is None:
+        await ctx.send(
+            f"{ctx.author.mention} 현재 취소할 대기 중인 고백이 없어요. 💔"
+        )
+        return
+
+    recipient = ctx.guild.get_member(row["recipient_id"])
+
+    if recipient:
+        recipient_text = recipient.mention
+    else:
+        recipient_text = f"`{row['recipient_id']}`"
+
+    await ctx.send(
+        f"💔 {ctx.author.mention}님의 고백이 취소되었어요.\n"
+        f"상대방: {recipient_text}\n"
+        "상대방이 아직 수락하지 않은 고백만 취소할 수 있어요."
+    )
