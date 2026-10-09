@@ -5,7 +5,7 @@
 
 from core import *
 
-import intro, profile, moderation, dating, events, experience, backup, status
+import intro, profile, moderation, dating, events, experience, backup, status, romance
 
 
 # =========================================================
