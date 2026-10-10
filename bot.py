@@ -37,7 +37,6 @@ _slash_synced = False
 async def sync_slash_commands():
     global _slash_synced
 
-    # Discord 로그인 완료까지 대기
     await bot.wait_until_ready()
 
     if _slash_synced:
@@ -46,9 +45,7 @@ async def sync_slash_commands():
     try:
         guild = discord.Object(id=GUILD_ID)
 
-        # 서버에 명령어 빠르게 적용
         bot.tree.copy_global_to(guild=guild)
-
         synced = await bot.tree.sync(guild=guild)
 
         _slash_synced = True
@@ -66,6 +63,7 @@ async def sync_slash_commands():
 # =========================================================
 
 async def main():
+
     # PostgreSQL 연결
     await init_database()
 
@@ -91,6 +89,9 @@ async def main():
 
     # 소개팅 슬래시 명령어 등록
     dating.setup(bot)
+
+    # 상태 슬래시 명령어 등록
+    status.setup(bot)
 
     print("[BOT] Discord 연결 중...")
 
