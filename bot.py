@@ -1,4 +1,3 @@
-```python
 # =========================================================
 # Discord Server Management Bot
 # 분리된 메인 실행 파일
@@ -132,4 +131,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-```
