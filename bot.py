@@ -1,4 +1,3 @@
-```python
 # =========================================================
 # Discord Server Management Bot
 # 분리된 메인 실행 파일
@@ -54,12 +53,10 @@ async def main():
             "DISCORD_TOKEN이 없습니다."
         )
 
-    # 새 명령어 안내 등록
+    # 명령어 안내 등록
     await help_menu.setup(bot)
 
-    print(
-        "[BOT] Discord 연결 중..."
-    )
+    print("[BOT] Discord 연결 중...")
 
     # 자동 백업 시작
     backup.start_backup_loop()
@@ -73,8 +70,4 @@ async def main():
 # =========================================================
 
 if __name__ == "__main__":
-
-    asyncio.run(
-        main()
-    )
-```
+    asyncio.run(main())
