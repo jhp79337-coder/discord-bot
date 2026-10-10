@@ -142,15 +142,15 @@ async def _change(conn, guild_id, user_id, amount, reason):
     """잔액을 변경하고 거래 내역을 기록합니다. 잔액 부족 시 False."""
     await _ensure_wallet(conn, guild_id, user_id)
 
-    if amount < 0:
-        row = await conn.fetchrow("""
-            UPDATE economy_wallets
-            SET balance = balance + $3
-            WHERE guild_id = $1
-              AND user_id = $2
-              AND balance >= -$3
-            RETURNING balance
-        """, guild_id, user_id, amount)
+if amount < 0:
+    row = await conn.fetchrow("""
+        UPDATE economy_wallets
+        SET balance = balance + $3::BIGINT
+        WHERE guild_id = $1
+          AND user_id = $2
+          AND balance >= ($3::BIGINT * -1)
+        RETURNING balance
+    """, guild_id, user_id, amount)
 
         if row is None:
             return False
