@@ -17,6 +17,7 @@ import status
 import romance
 import nickname_restore
 import help_menu
+import economy
 
 
 # =========================================================
