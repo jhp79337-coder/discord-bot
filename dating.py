@@ -1341,6 +1341,39 @@ async def dating_command(
 
 
 # =========================================================
+# /소개팅 슬래시 명령어
+# 기존 !소개팅 명령어는 유지하고, 슬래시 명령어도 함께 제공합니다.
+# =========================================================
+
+@bot.tree.command(name="소개팅", description="소개팅 매칭 로비를 엽니다.")
+async def dating_slash_command(interaction: discord.Interaction):
+    member_group = get_dating_group(interaction.user)
+    member_gender = get_dating_gender(interaction.user)
+
+    if not member_group or not member_gender:
+        await interaction.response.send_message(
+            "❌ 자기소개를 완료하고 성별·출생년도가 정상적으로 등록된 회원만 "
+            "소개팅에 참가할 수 있어요.",
+            ephemeral=True
+        )
+        return
+
+    active_id, _ = dating_member_session(interaction.user.id)
+    if active_id:
+        await interaction.response.send_message(
+            f"❌ 이미 소개팅을 진행 중이에요. 세션: `{active_id}`",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        embed=build_dating_lobby_embed(),
+        view=DatingLobbyView(),
+        ephemeral=False
+    )
+
+
+# =========================================================
 # 영구 버튼 등록 (봇 재시작 후에도 기존 소개팅방 버튼 복구)
 # =========================================================
 
