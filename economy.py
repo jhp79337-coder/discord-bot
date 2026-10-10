@@ -162,101 +162,120 @@ async def _change(conn, guild_id, user_id, amount, reason):
 # =========================================================
 # 공통 응답 및 베팅 처리
 # =========================================================
+
+async def _reply(interaction, content=None, *, embed=None, ephemeral=False):
+    if interaction.response.is_done():
+        return await interaction.followup.send(
+            content=content,
+            embed=embed,
+            ephemeral=ephemeral
+        )
+
+    return await interaction.response.send_message(
+        content=content,
+        embed=embed,
+        ephemeral=ephemeral
+    )
+
+
 async def _play_bet_game(
-interaction,
-bet,
-game_name,
-outcome_text,
-payout_multiplier=0,
-refund=False
+    interaction,
+    bet,
+    game_name,
+    outcome_text,
+    payout_multiplier=0,
+    refund=False
 ):
-# Discord 응답 시간 초과 방지
-if not interaction.response.is_done():
-await interaction.response.defer()
+    # Discord 응답 시간 초과 방지
+    if not interaction.response.is_done():
+        await interaction.response.defer()
 
-if not 1 <= bet <= MAX_BET:
-    return await _reply(
-        interaction,
-        f"❌ 베팅은 1~{MAX_BET} 코인까지 가능해요."
-    )
+    if not 1 <= bet <= MAX_BET:
+        return await _reply(
+            interaction,
+            f"❌ 베팅은 1~{MAX_BET} 코인까지 가능해요."
+        )
 
-guild_id = interaction.guild_id
-user_id = interaction.user.id
+    guild_id = interaction.guild_id
+    user_id = interaction.user.id
 
-try:
-    async with _pool().acquire() as conn:
-        async with conn.transaction():
-            # 베팅 금액 차감
-            if not await _change(
-                conn,
-                guild_id,
-                user_id,
-                -bet,
-                f"{game_name} 베팅"
-            ):
-                return await _reply(
-                    interaction,
-                    "❌ 코인이 부족해요."
-                )
-
-            # 무승부: 베팅 금액 환급
-            if refund:
-                await _change(
+    try:
+        async with _pool().acquire() as conn:
+            async with conn.transaction():
+                # 베팅 금액 차감
+                if not await _change(
                     conn,
                     guild_id,
                     user_id,
-                    bet,
-                    f"{game_name} 환급"
-                )
-                net_text = (
-                    f"베팅금 **{bet:,} 코인**을 돌려받았어요."
-                )
+                    -bet,
+                    f"{game_name} 베팅"
+                ):
+                    return await _reply(
+                        interaction,
+                        "❌ 코인이 부족해요."
+                    )
 
-            # 승리: 배당금 지급
-            elif payout_multiplier > 0:
-                payout = bet * payout_multiplier
+                # 무승부: 베팅 금액 환급
+                if refund:
+                    await _change(
+                        conn,
+                        guild_id,
+                        user_id,
+                        bet,
+                        f"{game_name} 환급"
+                    )
+                    net_text = (
+                        f"베팅금 **{bet:,} 코인**을 돌려받았어요."
+                    )
 
-                await _change(
+                # 승리: 배당금 지급
+                elif payout_multiplier > 0:
+                    payout = bet * payout_multiplier
+
+                    await _change(
+                        conn,
+                        guild_id,
+                        user_id,
+                        payout,
+                        f"{game_name} 당첨"
+                    )
+
+                    net_text = (
+                        f"총 반환 **{payout:,} 코인** · "
+                        f"순이익 **{payout - bet:,} 코인** 🎉"
+                    )
+
+                # 패배
+                else:
+                    net_text = f"**{bet:,} 코인**을 잃었어요."
+
+                balance = await _balance(
                     conn,
                     guild_id,
-                    user_id,
-                    payout,
-                    f"{game_name} 당첨"
+                    user_id
                 )
 
-                net_text = (
-                    f"총 반환 **{payout:,} 코인** · "
-                    f"순이익 **{payout - bet:,} 코인** 🎉"
-                )
+        await _reply(
+            interaction,
+            f"{outcome_text}\n"
+            f"{net_text}\n"
+            f"💗 잔액: **{balance:,} 코인**"
+        )
 
-            # 패배
-            else:
-                net_text = f"**{bet:,} 코인**을 잃었어요."
+    except Exception as e:
+        print(
+            f"[ECONOMY ERROR] {game_name}: "
+            f"{type(e).__name__}: {e}"
+        )
 
-            balance = await _balance(
-                conn,
-                guild_id,
-                user_id
-            )
+        await _reply(
+            interaction,
+            "❌ 게임 처리 중 오류가 발생했어요. "
+            "관리자에게 문의해 주세요."
+        )
 
-    await _reply(
-        interaction,
-        f"{outcome_text}\n"
-        f"{net_text}\n"
-        f"💗 잔액: **{balance:,} 코인**"
-    )
 
-except Exception as e:
-    print(
-        f"[ECONOMY ERROR] {game_name}: "
-        f"{type(e).__name__}: {e}"
-    )
 
-    await _reply(
-        interaction,
-        "❌ 게임 처리 중 오류가 발생했어요. "
-        "관리자에게 문의해 주세요."
-    )
 # =========================================================
 # /잔액
 # =========================================================
