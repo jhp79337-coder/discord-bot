@@ -1,3 +1,4 @@
+```python
 # =========================================================
 # Discord Server Management Bot
 # 분리된 메인 실행 파일
@@ -36,6 +37,9 @@ async def main():
     # PostgreSQL 연결
     await init_database()
 
+    # 하트 코인 경제 시스템 데이터베이스 초기화
+    await economy.init_economy_database()
+
     # 연애 시스템 데이터베이스 초기화
     await romance.init_romance_database()
 
@@ -72,3 +76,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+```
