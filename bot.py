@@ -67,8 +67,25 @@ async def main():
     # 하트 코인 경제 시스템 자동 작업 시작
     economy.start_economy_loops()
 
-    # Discord 봇 실행
-    await bot.start(TOKEN)
+    # Discord 로그인 및 슬래시 명령어 동기화
+    try:
+        async with bot:
+            await bot.login(TOKEN)
+
+            synced = await bot.tree.sync(
+                guild=discord.Object(id=GUILD_ID)
+            )
+
+            print(
+                f"[BOT] 슬래시 명령어 "
+                f"{len(synced)}개 서버 동기화 완료"
+            )
+
+            await bot.connect()
+
+    except Exception as e:
+        print(f"[BOT] 실행 오류: {e}")
+        raise
 
 
 # =========================================================
