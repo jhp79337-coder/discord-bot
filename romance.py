@@ -1173,7 +1173,7 @@ async def marriage_divorce(ctx):
 # 명령어: !쟁탈 @현재 커플인 사람
 # =========================================================
 
-ROMANCE_CHALLENGE_CATEGORY = "💘・연애 쟁탈"
+ROMANCE_CHALLENGE_CATEGORY = "💗・소개팅 & 연애"
 ROMANCE_CHALLENGE_PREFIX = "💌・쟁탈"
 ROMANCE_CHALLENGE_COOLDOWN = 60
 
