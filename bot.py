@@ -16,7 +16,6 @@ import backup
 import status
 import romance
 import nickname_restore
-import help_menu
 import economy
 
 
@@ -83,9 +82,6 @@ async def main():
     # 봇 토큰 확인
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN이 없습니다.")
-
-    # 명령어 안내 등록
-    await help_menu.setup(bot)
 
     # 소개팅 슬래시 명령어 등록
     dating.setup(bot)
