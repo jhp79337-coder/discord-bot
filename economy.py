@@ -1115,6 +1115,7 @@ async def before_voice_rewards_loop():
 # 경매 자동 정산
 # =========================================================
 
+
 @tasks.loop(minutes=1)
 async def auction_settlement_loop():
     if core.db_pool is None:
@@ -1126,7 +1127,8 @@ async def auction_settlement_loop():
         rows = await conn.fetch("""
             SELECT id
             FROM economy_auctions
-            WHERE status='open' AND ends_at <= NOW()
+            WHERE status = 'open'
+              AND ends_at <= NOW()
             ORDER BY id
             LIMIT 50
         """)
@@ -1134,58 +1136,90 @@ async def auction_settlement_loop():
     for item in rows:
         settled = None
 
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                row = await conn.fetchrow("""
-                    SELECT *
-                    FROM economy_auctions
-                    WHERE id=$1 AND status='open'
-                    FOR UPDATE
-                """, item["id"])
+        try:
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    row = await conn.fetchrow("""
+                        SELECT *
+                        FROM economy_auctions
+                        WHERE id = $1
+                          AND status = 'open'
+                        FOR UPDATE
+                    """, item["id"])
 
-                if (
-                    not row
-                    or row["ends_at"] > datetime.now(timezone.utc)
-                ):
-                    continue
+                    if not row:
+                        continue
 
-                await conn.execute("""
-                    UPDATE economy_auctions
-                    SET status='ended'
-                    WHERE id=$1
-                """, row["id"])
-
-                if row["highest_bidder"] is not None:
-                    await _change(
-                        conn, row["guild_id"], row["seller_id"],
-                        row["highest_bid"],
-                        f"경매 #{row['id']} 낙찰 코인 수령"
+                    # DB 기준으로 경매 종료 시간 확인
+                    expired = await conn.fetchval(
+                        "SELECT $1::timestamptz <= NOW()",
+                        row["ends_at"]
                     )
 
-                settled = dict(row)
+                    if not expired:
+                        continue
 
-        guild = core.bot.get_guild(settled["guild_id"])
-        channel = (
-            guild.get_channel(settled["channel_id"])
-            if guild else None
-        )
+                    # 먼저 종료 처리하여 중복 정산 방지
+                    await conn.execute("""
+                        UPDATE economy_auctions
+                        SET status = 'ended'
+                        WHERE id = $1
+                    """, row["id"])
 
-        if channel is None:
-            continue
+                    # 낙찰자가 있으면 등록자에게 낙찰금 지급
+                    if row["highest_bidder"] is not None:
+                        await _change(
+                            conn,
+                            row["guild_id"],
+                            row["seller_id"],
+                            row["highest_bid"],
+                            f"경매 #{row['id']} 낙찰 코인 수령"
+                        )
 
-        if settled["highest_bidder"] is None:
-            await channel.send(
-                f"⏰ 경매 **#{settled['id']}**가 입찰 없이 종료됐어요.\n"
-                f"등록자: <@{settled['seller_id']}>"
+                    settled = dict(row)
+
+            # DB 정산이 끝난 뒤에 디스코드 알림 전송
+            if settled is None:
+                continue
+
+            guild = core.bot.get_guild(settled["guild_id"])
+            channel = (
+                guild.get_channel(settled["channel_id"])
+                if guild else None
             )
-        else:
-            await channel.send(
-                f"🏆 **경매 #{settled['id']} 종료!**\n"
-                f"등록자: <@{settled['seller_id']}>\n"
-                f"낙찰자: <@{settled['highest_bidder']}>\n"
-                f"낙찰가: **{settled['highest_bid']:,} 하트 코인**\n\n"
-                "※ 서버 내부 가상 역할놀이이며 "
-                "실제 소유권이나 강제 의무가 발생하지 않아요."
+
+            if channel is None:
+                continue
+
+            if settled["highest_bidder"] is None:
+                message = (
+                    f"⏰ **경매 #{settled['id']} 종료!**\n"
+                    f"입찰자가 없어 유찰됐어요.\n"
+                    f"등록자: <@{settled['seller_id']}>"
+                )
+            else:
+                message = (
+                    f"🏆 **경매 #{settled['id']} 종료!**\n"
+                    f"등록자: <@{settled['seller_id']}>\n"
+                    f"낙찰자: <@{settled['highest_bidder']}>\n"
+                    f"낙찰가: **{settled['highest_bid']:,} 하트 코인**\n\n"
+                    "※ 서버 내부 가상 역할놀이이며 "
+                    "실제 소유권이나 강제 의무가 발생하지 않아요."
+                )
+
+            await channel.send(message)
+
+        except discord.HTTPException as e:
+            # 알림 전송 실패가 다른 경매의 정산을 막지 않도록 처리
+            print(
+                f"[경매 알림 오류] "
+                f"경매 ID={item['id']}: {e}"
+            )
+
+        except Exception as e:
+            print(
+                f"[경매 정산 오류] "
+                f"경매 ID={item['id']}: {type(e).__name__}: {e}"
             )
 
 
@@ -1195,13 +1229,12 @@ async def before_auction_settlement_loop():
 
 
 def start_economy_loops():
-    """봇이 준비된 뒤 경제 시스템 반복 작업을 시작합니다."""
+    """경제 시스템의 반복 작업을 시작합니다."""
     if not voice_rewards_loop.is_running():
         voice_rewards_loop.start()
 
     if not auction_settlement_loop.is_running():
         auction_settlement_loop.start()
-
 
 # =========================================================
 # /복권
