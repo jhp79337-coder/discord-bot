@@ -1,4 +1,4 @@
-
+```python
 # =========================================================
 # Discord Server Management Bot
 # 분리된 메인 실행 파일
@@ -26,6 +26,40 @@ import economy
 # =========================================================
 
 load_data()
+
+
+# =========================================================
+# 슬래시 명령어 동기화
+# =========================================================
+
+_slash_synced = False
+
+
+async def sync_slash_commands():
+    global _slash_synced
+
+    # Discord 로그인 완료까지 대기
+    await bot.wait_until_ready()
+
+    if _slash_synced:
+        return
+
+    try:
+        guild = discord.Object(id=GUILD_ID)
+
+        # 서버에 명령어 빠르게 적용
+        bot.tree.copy_global_to(guild=guild)
+
+        synced = await bot.tree.sync(guild=guild)
+
+        _slash_synced = True
+        print(
+            f"[BOT] 슬래시 명령어 "
+            f"{len(synced)}개 동기화 완료"
+        )
+
+    except Exception as e:
+        print(f"[BOT] 슬래시 명령어 동기화 실패: {e}")
 
 
 # =========================================================
@@ -59,13 +93,6 @@ async def main():
     # 소개팅 슬래시 명령어 등록
     dating.setup(bot)
 
-    # 서버 전용 슬래시 명령어 동기화
-    guild = discord.Object(id=GUILD_ID)
-    bot.tree.copy_global_to(guild=guild)
-
-    synced = await bot.tree.sync(guild=guild)
-    print(f"[BOT] 슬래시 명령어 {len(synced)}개 동기화 완료")
-
     print("[BOT] Discord 연결 중...")
 
     # 자동 백업 시작
@@ -73,6 +100,9 @@ async def main():
 
     # 경제 시스템 자동 작업 시작
     economy.start_economy_loops()
+
+    # 로그인 완료 후 슬래시 명령어 동기화
+    asyncio.create_task(sync_slash_commands())
 
     # Discord 봇 실행
     await bot.start(TOKEN)
@@ -84,3 +114,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+```
