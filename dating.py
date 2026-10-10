@@ -49,6 +49,37 @@ def save_dating_data():
 
 
 # =========================================================
+# 영구 버튼 등록
+# bot.py에서 DB 및 저장 데이터 복원 후 호출
+# =========================================================
+
+def register_persistent_views(target_bot):
+    # 소개팅 로비 버튼 복원
+    target_bot.add_view(DatingLobbyView())
+
+    # 진행 중인 소개팅 버튼 복원
+    restored = 0
+
+    for session_id, session in list(dating_sessions.items()):
+        if session.get("status") != "active":
+            continue
+
+        try:
+            target_bot.add_view(DatingView(str(session_id)))
+            restored += 1
+        except Exception as e:
+            print(
+                f"[DATING VIEW RESTORE ERROR] "
+                f"{session_id}: {e}"
+            )
+
+    print(
+        f"[DATING] 영구 버튼 등록 완료 "
+        f"(진행 중 세션 {restored}개)"
+    )
+
+
+# =========================================================
 # 현재 소개팅 세션 확인
 # =========================================================
 
@@ -129,11 +160,9 @@ def can_dating_match(member_a, member_b):
     if not all((group_a, group_b, gender_a, gender_b)):
         return False
 
-    # 동일 연령 그룹끼리 매칭
     if group_a != group_b:
         return False
 
-    # 서로 다른 성별끼리 매칭
     if gender_a == gender_b:
         return False
 
@@ -294,7 +323,9 @@ async def finish_dating_session(session_id, reason="소개팅 종료"):
     if guild is None:
         return
 
-    channel = guild.get_channel(int(session.get("channel_id", 0)))
+    channel = guild.get_channel(
+        int(session.get("channel_id", 0))
+    )
 
     if channel is None:
         return
@@ -355,7 +386,18 @@ class DatingReportModal(discord.ui.Modal, title="소개팅 신고"):
 class DatingView(discord.ui.View):
     def __init__(self, session_id):
         super().__init__(timeout=None)
-        self.session_id = session_id
+        self.session_id = str(session_id)
+
+        # 각 소개팅의 버튼 ID를 서로 다르게 설정
+        # 예: dating:info:ABC123
+        for item in self.children:
+            if (
+                isinstance(item, discord.ui.Button)
+                and item.custom_id
+            ):
+                item.custom_id = (
+                    f"{item.custom_id}:{self.session_id}"
+                )
 
     def get_session(self):
         return dating_sessions.get(self.session_id)
@@ -414,7 +456,7 @@ class DatingView(discord.ui.View):
         opponent = self.get_opponent(interaction.user.id)
         session = self.get_session()
 
-        if not opponent:
+        if not opponent or not session:
             await interaction.response.send_message(
                 "❌ 상대를 찾을 수 없습니다.",
                 ephemeral=True
@@ -423,7 +465,9 @@ class DatingView(discord.ui.View):
 
         await interaction.response.send_message(
             embed=dating_embed_for_member(
-                interaction.user, opponent, session
+                interaction.user,
+                opponent,
+                session
             ),
             ephemeral=True
         )
@@ -446,11 +490,17 @@ class DatingView(discord.ui.View):
     )
     async def like(self, interaction, button):
         session = self.get_session()
-        likes = session.setdefault("likes", [])
 
-        # JSON 저장 후에는 ID가 문자열일 수 있음
-        likes = [int(uid) for uid in likes]
-        session["likes"] = likes
+        if not session:
+            await interaction.response.send_message(
+                "❌ 소개팅 세션을 찾을 수 없습니다.",
+                ephemeral=True
+            )
+            return
+
+        likes = [
+            int(uid) for uid in session.get("likes", [])
+        ]
 
         if interaction.user.id in likes:
             await interaction.response.send_message(
@@ -495,7 +545,8 @@ class DatingView(discord.ui.View):
     )
     async def game(self, interaction, button):
         await interaction.response.send_message(
-            f"🎮 **미니게임**\n\n{random.choice(DATING_GAMES)}"
+            f"🎮 **미니게임**\n\n"
+            f"{random.choice(DATING_GAMES)}"
         )
 
     @discord.ui.button(
@@ -564,8 +615,9 @@ class DatingLobbyView(discord.ui.View):
             )
             return
 
-        # 대기열 ID는 저장 후 문자열일 수 있으므로 숫자로 비교
-        queue_ids = [int(uid) for uid in dating_queue]
+        queue_ids = [
+            int(uid) for uid in dating_queue
+        ]
 
         if member.id in queue_ids:
             await interaction.response.send_message(
@@ -599,7 +651,6 @@ class DatingLobbyView(discord.ui.View):
 
         opponent = random.choice(candidates)
 
-        # 두 사람을 대기열에서 제거
         dating_queue[:] = [
             int(uid) for uid in dating_queue
             if int(uid) not in (member.id, opponent.id)
@@ -607,7 +658,9 @@ class DatingLobbyView(discord.ui.View):
         save_dating_data()
 
         result = await create_dating_channel(
-            interaction.guild, member, opponent
+            interaction.guild,
+            member,
+            opponent
         )
 
         if not result:
@@ -626,7 +679,8 @@ class DatingLobbyView(discord.ui.View):
 
         try:
             await opponent.send(
-                f"💗 소개팅 매칭 완료!\n{channel.mention}에서 대화를 시작해 보세요."
+                f"💗 소개팅 매칭 완료!\n"
+                f"{channel.mention}에서 대화를 시작해 보세요."
             )
         except Exception:
             pass
@@ -647,7 +701,9 @@ class DatingLobbyView(discord.ui.View):
     async def leave(self, interaction, button):
         user_id = interaction.user.id
 
-        if user_id not in [int(uid) for uid in dating_queue]:
+        if user_id not in [
+            int(uid) for uid in dating_queue
+        ]:
             await interaction.response.send_message(
                 "❌ 현재 대기열에 들어가 있지 않아요.",
                 ephemeral=True
@@ -679,11 +735,13 @@ class DatingLobbyView(discord.ui.View):
             or info.get("birth_year")
             or "미설정"
         )
+
         gender = (
             profile_data.get("gender")
             or gender_text(info.get("gender"))
             or "미설정"
         )
+
         location = profile_data.get("location") or "미설정"
         ideal_type = profile_data.get("ideal_type") or "미설정"
         likes = profile_data.get("likes") or "미설정"
@@ -698,7 +756,10 @@ class DatingLobbyView(discord.ui.View):
             ),
             color=discord.Color.from_rgb(255, 82, 145)
         )
-        embed.set_thumbnail(url=interaction.user.display_avatar.url)
+
+        embed.set_thumbnail(
+            url=interaction.user.display_avatar.url
+        )
 
         await interaction.response.send_message(
             embed=embed,
@@ -721,7 +782,10 @@ def setup(bot):
         description="소개팅 로비를 열어요."
     )
     async def dating_command(interaction: discord.Interaction):
-        if interaction.guild is None or interaction.guild.id != GUILD_ID:
+        if (
+            interaction.guild is None
+            or interaction.guild.id != GUILD_ID
+        ):
             await interaction.response.send_message(
                 "❌ 이 서버에서만 사용할 수 있어요.",
                 ephemeral=True
@@ -758,7 +822,10 @@ def setup(bot):
             ),
             color=discord.Color.from_rgb(255, 82, 145)
         )
-        embed.set_footer(text="상대방을 존중하면서 즐겨주세요.")
+
+        embed.set_footer(
+            text="상대방을 존중하면서 즐겨주세요."
+        )
 
         await interaction.response.send_message(
             embed=embed,
