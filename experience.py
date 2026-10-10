@@ -156,4 +156,3 @@ async def before_voice_exp_loop():
 async def start_voice_exp():
     if not voice_exp_loop.is_running():
         voice_exp_loop.start()
-```
