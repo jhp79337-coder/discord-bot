@@ -404,6 +404,9 @@ async def before_auction_settlement_loop():
 if not auction_settlement_loop.is_running():
     auction_settlement_loop.start()
 
+if not voice_rewards_loop.is_running():
+    voice_rewards_loop.start()
+
 
 # =========================================================
 # 추가 미니게임
