@@ -1,3 +1,4 @@
+
 # =========================================================
 # Discord Server Management Bot
 # 분리된 메인 실행 파일
@@ -53,9 +54,7 @@ async def main():
 
     # 봇 토큰 확인
     if not TOKEN:
-        raise RuntimeError(
-            "DISCORD_TOKEN이 없습니다."
-        )
+        raise RuntimeError("DISCORD_TOKEN이 없습니다.")
 
     # 명령어 안내 등록
     await help_menu.setup(bot)
@@ -64,6 +63,9 @@ async def main():
 
     # 자동 백업 시작
     backup.start_backup_loop()
+
+    # 하트 코인 경제 시스템 자동 작업 시작
+    economy.start_economy_loops()
 
     # Discord 봇 실행
     await bot.start(TOKEN)
