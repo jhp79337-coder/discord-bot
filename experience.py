@@ -1,4 +1,3 @@
-```python
 from core import *
 from discord.ext import tasks
 
