@@ -1,3 +1,4 @@
+```python
 # =========================================================
 # Discord Server Management Bot
 # 분리된 메인 실행 파일
@@ -48,13 +49,31 @@ async def sync_slash_commands():
         synced = await bot.tree.sync(guild=guild)
 
         _slash_synced = True
+
         print(
             f"[BOT] 슬래시 명령어 "
             f"{len(synced)}개 동기화 완료"
         )
 
     except Exception as e:
-        print(f"[BOT] 슬래시 명령어 동기화 실패: {e}")
+        print(
+            f"[BOT] 슬래시 명령어 "
+            f"동기화 실패: {type(e).__name__}: {e}"
+        )
+
+
+# =========================================================
+# 봇 준비 완료 이벤트
+# =========================================================
+
+@bot.event
+async def on_ready():
+    print(f"[BOT] 로그인 완료: {bot.user}")
+
+    # 경제 시스템 자동 작업 시작
+    economy.start_economy_loops()
+
+    print("[BOT] 경제 시스템 자동 작업 확인 완료")
 
 
 # =========================================================
@@ -65,12 +84,15 @@ async def main():
 
     # PostgreSQL 연결
     await init_database()
+    print("[BOT] PostgreSQL 연결 완료")
 
     # 하트 코인 경제 시스템 초기화
     await economy.init_economy_database()
+    print("[BOT] 경제 시스템 데이터베이스 초기화 완료")
 
     # 연애 시스템 데이터베이스 초기화
     await romance.init_romance_database()
+    print("[BOT] 연애 시스템 데이터베이스 초기화 완료")
 
     # 회원 / 자기소개 데이터 불러오기
     await load_members_from_db()
@@ -81,7 +103,10 @@ async def main():
 
     # 봇 토큰 확인
     if not TOKEN:
-        raise RuntimeError("DISCORD_TOKEN이 없습니다.")
+        raise RuntimeError(
+            "DISCORD_TOKEN이 없습니다. "
+            "Railway Variables를 확인해 주세요."
+        )
 
     # 소개팅 슬래시 명령어 등록
     dating.setup(bot)
@@ -89,16 +114,13 @@ async def main():
     # 상태 슬래시 명령어 등록
     status.setup(bot)
 
-    print("[BOT] Discord 연결 중...")
-
     # 자동 백업 시작
     backup.start_backup_loop()
 
-    # 경제 시스템 자동 작업 시작
-    economy.start_economy_loops()
-
     # 로그인 완료 후 슬래시 명령어 동기화
     asyncio.create_task(sync_slash_commands())
+
+    print("[BOT] Discord 연결 중...")
 
     # Discord 봇 실행
     await bot.start(TOKEN)
@@ -110,3 +132,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+```
