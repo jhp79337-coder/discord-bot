@@ -1,8 +1,8 @@
+
 from core import *
 
 import io
 import json
-
 
 BACKUP_KEEP_COUNT = 20
 BACKUP_INTERVAL_HOURS = 6
@@ -57,7 +57,9 @@ async def build_backup():
             for row in exp_rows
         },
         "warnings": warnings,
-        "intro_exceptions": sorted(int(x) for x in intro_exceptions),
+        "intro_exceptions": sorted(
+            int(x) for x in intro_exceptions
+        ),
         "dating": {
             "queue": dating_queue,
             "sessions": dating_sessions
@@ -94,8 +96,8 @@ async def save_backup(reason="manual"):
 
 
 async def load_runtime_state_from_db():
-    """JSON으로만 남아 있던 상태를 PostgreSQL 스냅샷에서 복원한다."""
-    global warnings, intro_exceptions, dating_queue, dating_sessions
+    global warnings, intro_exceptions
+    global dating_queue, dating_sessions
 
     if db_pool is None:
         return
@@ -118,28 +120,23 @@ async def load_runtime_state_from_db():
     if isinstance(data.get("warnings"), dict):
         warnings = data["warnings"]
 
-    exceptions = data.get("intro_exceptions", [])
     intro_exceptions = set()
-    for value in exceptions:
+    for value in data.get("intro_exceptions", []):
         try:
             intro_exceptions.add(int(value))
         except (TypeError, ValueError):
             pass
 
-    # 소개팅 대기열은 최신 DB 스냅샷으로 무조건 덮어쓰지 않는다.
-    # 오래된 백업 때문에 현재 대기자가 사라지는 문제를 방지한다.
     dating = data.get("dating", {})
 
     if not dating_queue:
-        restored_queue = []
+        dating_queue = []
         for value in dating.get("queue", []):
             try:
-                restored_queue.append(int(value))
+                dating_queue.append(int(value))
             except (TypeError, ValueError):
                 pass
-        dating_queue = restored_queue
 
-    # 진행 중인 세션도 현재 메모리에 이미 있으면 유지한다.
     if not dating_sessions:
         restored_sessions = dating.get("sessions", {})
         dating_sessions = (
@@ -152,7 +149,6 @@ async def load_runtime_state_from_db():
 
 
 async def persist_runtime_state():
-    """경고/소개팅/예외처럼 기존 JSON으로 저장되던 상태를 DB에 저장한다."""
     if db_pool is None:
         return
 
@@ -185,7 +181,9 @@ async def restore_backup(data):
     if db_pool is None:
         raise RuntimeError("PostgreSQL 연결이 없습니다.")
 
-    required = {"members", "profiles", "experience", "warnings", "dating"}
+    required = {
+        "members", "profiles", "experience", "warnings", "dating"
+    }
     if not required.issubset(data):
         raise ValueError("올바른 봇 백업 파일이 아닙니다.")
 
@@ -225,14 +223,11 @@ async def restore_backup(data):
                     int(value)
                 )
 
-    global members, profiles, warnings, intro_exceptions, dating_queue, dating_sessions
+    global members, profiles, warnings
+    global intro_exceptions, dating_queue, dating_sessions
 
-    members = {
-        str(k): v for k, v in data["members"].items()
-    }
-    profiles = {
-        str(k): v for k, v in data["profiles"].items()
-    }
+    members = {str(k): v for k, v in data["members"].items()}
+    profiles = {str(k): v for k, v in data["profiles"].items()}
     warnings = data.get("warnings", {})
 
     intro_exceptions = set()
@@ -244,6 +239,7 @@ async def restore_backup(data):
 
     dating = data.get("dating", {})
     dating_queue = []
+
     for value in dating.get("queue", []):
         try:
             dating_queue.append(int(value))
@@ -270,85 +266,172 @@ async def restore_backup(data):
     )
 
 
-@bot.command(name="백업")
-@commands.has_permissions(administrator=True)
-async def backup_command(ctx):
-    if not ctx.guild or ctx.guild.id != GUILD_ID:
+# =========================================================
+# 슬래시 명령어: /백업
+# =========================================================
+
+@bot.tree.command(name="백업", description="봇의 주요 데이터를 JSON 파일로 백업합니다.")
+async def backup_command(interaction: discord.Interaction):
+    if not interaction.guild or interaction.guild.id != GUILD_ID:
+        await interaction.response.send_message(
+            "이 서버에서만 사용할 수 있습니다.",
+            ephemeral=True
+        )
         return
+
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message(
+            "관리자만 사용할 수 있습니다.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
 
     try:
         data = await save_backup("manual")
-        payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
-        file = discord.File(io.BytesIO(payload), filename="discord_bot_backup.json")
-        await ctx.send(
+        payload = json.dumps(
+            data, ensure_ascii=False, indent=2
+        ).encode("utf-8")
+
+        file = discord.File(
+            io.BytesIO(payload),
+            filename="discord_bot_backup.json"
+        )
+
+        await interaction.followup.send(
             "✅ 전체 백업을 완료했습니다.\n"
             "회원 / 프로필 / EXP / 경고 / 소개팅 / 자기소개 예외 데이터를 포함했습니다.",
-            file=file
+            file=file,
+            ephemeral=True
         )
     except Exception as e:
-        await ctx.send(f"❌ 백업 실패: `{e}`")
+        await interaction.followup.send(
+            f"❌ 백업 실패: `{e}`",
+            ephemeral=True
+        )
 
 
-@bot.command(name="복구")
-@commands.has_permissions(administrator=True)
-async def restore_command(ctx):
-    if not ctx.guild or ctx.guild.id != GUILD_ID:
-        return
+# =========================================================
+# 슬래시 명령어: /복구
+# =========================================================
 
-    if not ctx.message.attachments:
-        await ctx.send(
-            "❌ 백업 JSON 파일을 이 메시지에 첨부해서 `!복구`를 사용해주세요."
+@bot.tree.command(name="복구", description="첨부한 JSON 백업 파일로 데이터를 복구합니다.")
+async def restore_command(
+    interaction: discord.Interaction,
+    파일: discord.Attachment
+):
+    if not interaction.guild or interaction.guild.id != GUILD_ID:
+        await interaction.response.send_message(
+            "이 서버에서만 사용할 수 있습니다.",
+            ephemeral=True
         )
         return
 
-    attachment = ctx.message.attachments[0]
-
-    if not attachment.filename.lower().endswith(".json"):
-        await ctx.send("❌ JSON 백업 파일만 복구할 수 있습니다.")
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message(
+            "관리자만 사용할 수 있습니다.",
+            ephemeral=True
+        )
         return
+
+    if not 파일.filename.lower().endswith(".json"):
+        await interaction.response.send_message(
+            "JSON 백업 파일만 복구할 수 있습니다.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
 
     try:
-        raw = await attachment.read()
+        raw = await 파일.read()
         data = json.loads(raw.decode("utf-8"))
         await restore_backup(data)
-        await ctx.send("✅ 백업 데이터 복구가 완료되었습니다.")
+
+        await interaction.followup.send(
+            "✅ 백업 데이터 복구가 완료되었습니다.",
+            ephemeral=True
+        )
     except Exception as e:
-        await ctx.send(f"❌ 복구 실패: `{e}`")
+        await interaction.followup.send(
+            f"❌ 복구 실패: `{e}`",
+            ephemeral=True
+        )
 
 
-@bot.command(name="백업목록")
-@commands.has_permissions(administrator=True)
-async def backup_list_command(ctx):
-    if not ctx.guild or ctx.guild.id != GUILD_ID:
+# =========================================================
+# 슬래시 명령어: /백업목록
+# =========================================================
+
+@bot.tree.command(name="백업목록", description="최근 저장된 백업 기록을 확인합니다.")
+async def backup_list_command(interaction: discord.Interaction):
+    if not interaction.guild or interaction.guild.id != GUILD_ID:
+        await interaction.response.send_message(
+            "이 서버에서만 사용할 수 있습니다.",
+            ephemeral=True
+        )
+        return
+
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message(
+            "관리자만 사용할 수 있습니다.",
+            ephemeral=True
+        )
         return
 
     if db_pool is None:
-        await ctx.send("❌ PostgreSQL 연결이 없습니다.")
+        await interaction.response.send_message(
+            "PostgreSQL 연결이 없습니다.",
+            ephemeral=True
+        )
         return
 
-    await ensure_backup_table()
+    await interaction.response.defer(ephemeral=True)
 
-    async with db_pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT id, created_at, reason
-            FROM bot_backups
-            ORDER BY id DESC
-            LIMIT 10
-            """
+    try:
+        await ensure_backup_table()
+
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, created_at, reason
+                FROM bot_backups
+                ORDER BY id DESC
+                LIMIT 10
+                """
+            )
+
+        if not rows:
+            await interaction.followup.send(
+                "📦 저장된 백업이 없습니다.",
+                ephemeral=True
+            )
+            return
+
+        lines = ["📦 **최근 백업 10개**"]
+
+        for row in rows:
+            created = row["created_at"].strftime("%Y-%m-%d %H:%M")
+            lines.append(
+                f"`#{row['id']}` · {created} · `{row['reason']}`"
+            )
+
+        await interaction.followup.send(
+            "\n".join(lines),
+            ephemeral=True
         )
 
-    if not rows:
-        await ctx.send("📦 저장된 백업이 없습니다.")
-        return
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ 백업 목록 조회 실패: `{e}`",
+            ephemeral=True
+        )
 
-    lines = ["📦 **최근 백업 10개**"]
-    for row in rows:
-        created = row["created_at"].strftime("%Y-%m-%d %H:%M")
-        lines.append(f"`#{row['id']}` · {created} · `{row['reason']}`")
 
-    await ctx.send("\n".join(lines))
-
+# =========================================================
+# 6시간마다 자동 백업
+# =========================================================
 
 @tasks.loop(hours=BACKUP_INTERVAL_HOURS)
 async def automatic_backup_loop():
