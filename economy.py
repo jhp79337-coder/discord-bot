@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 """
 소개팅/연애 서버용 가상 코인 경제 시스템
@@ -44,7 +45,6 @@ def _pool():
             "PostgreSQL 연결이 없습니다. "
             "core.init_database() 이후 사용하세요."
         )
-
     return core.db_pool
 
 
@@ -139,44 +139,43 @@ async def _balance(conn, guild_id, user_id):
 
 
 async def _change(conn, guild_id, user_id, amount, reason):
-"""잔액을 변경하고 거래 내역을 기록합니다. 잔액 부족 시 False."""
-await _ensure_wallet(conn, guild_id, user_id)
+    """잔액을 변경하고 거래 내역을 기록합니다. 잔액 부족 시 False."""
+    await _ensure_wallet(conn, guild_id, user_id)
 
-if amount < 0:
-    row = await conn.fetchrow("""
-        UPDATE economy_wallets
-        SET balance = balance + $3::BIGINT
-        WHERE guild_id = $1
-          AND user_id = $2
-          AND balance >= ($3::BIGINT * -1)
-        RETURNING balance
-    """, guild_id, user_id, amount)
+    if amount < 0:
+        row = await conn.fetchrow("""
+            UPDATE economy_wallets
+            SET balance = balance + $3::BIGINT
+            WHERE guild_id = $1
+              AND user_id = $2
+              AND balance >= ($3::BIGINT * -1)
+            RETURNING balance
+        """, guild_id, user_id, amount)
 
-    if row is None:
-        return False
+        if row is None:
+            return False
 
-elif amount > 0:
+    elif amount > 0:
+        await conn.execute("""
+            UPDATE economy_wallets
+            SET balance = balance + $3::BIGINT
+            WHERE guild_id = $1
+              AND user_id = $2
+        """, guild_id, user_id, amount)
+
     await conn.execute("""
-        UPDATE economy_wallets
-        SET balance = balance + $3::BIGINT
-        WHERE guild_id = $1
-          AND user_id = $2
-    """, guild_id, user_id, amount)
+        INSERT INTO economy_transactions (
+            guild_id, user_id, amount, reason
+        )
+        VALUES ($1, $2, $3, $4)
+    """, guild_id, user_id, amount, reason)
 
-await conn.execute("""
-    INSERT INTO economy_transactions (
-        guild_id, user_id, amount, reason
-    )
-    VALUES ($1, $2, $3, $4)
-""", guild_id, user_id, amount, reason)
+    return True
 
-return True
 
-=========================================================
-
-공통 응답
-
-=========================================================
+# =========================================================
+# 공통 응답
+# =========================================================
 
 async def _reply(
     interaction,
@@ -227,43 +226,30 @@ async def _play_bet_game(
         async with _pool().acquire() as conn:
             async with conn.transaction():
                 success = await _change(
-                    conn,
-                    guild_id,
-                    user_id,
-                    -bet,
-                    f"{game_name} 베팅"
+                    conn, guild_id, user_id,
+                    -bet, f"{game_name} 베팅"
                 )
 
                 if not success:
                     return await _reply(
-                        interaction,
-                        "❌ 코인이 부족해요."
+                        interaction, "❌ 코인이 부족해요."
                     )
 
                 if refund:
                     await _change(
-                        conn,
-                        guild_id,
-                        user_id,
-                        bet,
-                        f"{game_name} 환급"
+                        conn, guild_id, user_id,
+                        bet, f"{game_name} 환급"
                     )
-
                     net_text = (
                         f"베팅금 **{bet:,} 코인**을 돌려받았어요."
                     )
 
                 elif payout_multiplier > 0:
                     payout = bet * payout_multiplier
-
                     await _change(
-                        conn,
-                        guild_id,
-                        user_id,
-                        payout,
-                        f"{game_name} 당첨"
+                        conn, guild_id, user_id,
+                        payout, f"{game_name} 당첨"
                     )
-
                     net_text = (
                         f"총 반환 **{payout:,} 코인** · "
                         f"순이익 **{payout - bet:,} 코인** 🎉"
@@ -273,15 +259,12 @@ async def _play_bet_game(
                     net_text = f"**{bet:,} 코인**을 잃었어요."
 
                 balance = await _balance(
-                    conn,
-                    guild_id,
-                    user_id
+                    conn, guild_id, user_id
                 )
 
         await _reply(
             interaction,
-            f"{outcome_text}\n"
-            f"{net_text}\n"
+            f"{outcome_text}\n{net_text}\n"
             f"💗 잔액: **{balance:,} 코인**"
         )
 
@@ -290,12 +273,13 @@ async def _play_bet_game(
             f"[ECONOMY ERROR] {game_name}: "
             f"{type(e).__name__}: {e}"
         )
-
         await _reply(
             interaction,
             "❌ 게임 처리 중 오류가 발생했어요. "
             "관리자에게 문의해 주세요."
         )
+
+
 # =========================================================
 # /잔액
 # =========================================================
@@ -314,9 +298,7 @@ async def wallet(
 
     async with _pool().acquire() as conn:
         balance = await _balance(
-            conn,
-            interaction.guild_id,
-            member.id
+            conn, interaction.guild_id, member.id
         )
 
     await _reply(
@@ -360,7 +342,6 @@ async def daily(interaction: discord.Interaction):
                     timedelta(hours=24)
                     - (current_time - row["daily_at"])
                 )
-
                 hours = int(
                     remaining.total_seconds() // 3600
                 )
@@ -382,17 +363,11 @@ async def daily(interaction: discord.Interaction):
             """, guild_id, user_id, current_time)
 
             await _change(
-                conn,
-                guild_id,
-                user_id,
-                DAILY_REWARD,
-                "일일 출석 보상"
+                conn, guild_id, user_id,
+                DAILY_REWARD, "일일 출석 보상"
             )
-
             balance = await _balance(
-                conn,
-                guild_id,
-                user_id
+                conn, guild_id, user_id
             )
 
     await _reply(
@@ -400,7 +375,6 @@ async def daily(interaction: discord.Interaction):
         f"🎁 출석 보상 **{DAILY_REWARD} 코인** 지급!\n"
         f"💗 현재 잔액: **{balance:,} 코인**"
     )
-
 
 # =========================================================
 # /코인송금
@@ -430,31 +404,25 @@ async def transfer(
     async with _pool().acquire() as conn:
         async with conn.transaction():
             success = await _change(
-                conn,
-                interaction.guild_id,
-                interaction.user.id,
-                -amount,
+                conn, interaction.guild_id,
+                interaction.user.id, -amount,
                 f"{member.id}에게 송금"
             )
 
             if not success:
                 return await _reply(
-                    interaction,
-                    "❌ 코인이 부족해요.",
+                    interaction, "❌ 코인이 부족해요.",
                     ephemeral=True
                 )
 
             await _change(
-                conn,
-                interaction.guild_id,
-                member.id,
-                amount,
+                conn, interaction.guild_id,
+                member.id, amount,
                 f"{interaction.user.id}에게서 송금"
             )
 
             balance = await _balance(
-                conn,
-                interaction.guild_id,
+                conn, interaction.guild_id,
                 interaction.user.id
             )
 
@@ -490,33 +458,19 @@ async def rps(
 ):
     mine = choice.value
     theirs = random.choice(["가위", "바위", "보"])
-    beats = {
-        "가위": "보",
-        "바위": "가위",
-        "보": "바위"
-    }
+    beats = {"가위": "보", "바위": "가위", "보": "바위"}
 
     if mine == theirs:
-        multiplier = 0
-        refund = True
-        result = "무승부!"
+        multiplier, refund, result = 0, True, "무승부!"
     elif beats[mine] == theirs:
-        multiplier = 2
-        refund = False
-        result = "승리!"
+        multiplier, refund, result = 2, False, "승리!"
     else:
-        multiplier = 0
-        refund = False
-        result = "패배!"
+        multiplier, refund, result = 0, False, "패배!"
 
     await _play_bet_game(
-        interaction,
-        bet,
-        "가위바위보",
-        f"✊ 내 선택: **{mine}** · "
-        f"봇 선택: **{theirs}**\n{result}",
-        multiplier,
-        refund
+        interaction, bet, "가위바위보",
+        f"✊ 내 선택: **{mine}** · 봇 선택: **{theirs}**\n{result}",
+        multiplier, refund
     )
 
 
@@ -538,11 +492,8 @@ async def dice(
     win = roll >= 4
 
     await _play_bet_game(
-        interaction,
-        bet,
-        "주사위",
-        f"🎲 주사위 결과: **{roll}** · "
-        f"{'승리!' if win else '패배!'}",
+        interaction, bet, "주사위",
+        f"🎲 주사위 결과: **{roll}** · {'승리!' if win else '패배!'}",
         2 if win else 0
     )
 
@@ -562,10 +513,7 @@ async def slots(
     bet: app_commands.Range[int, 1, MAX_BET]
 ):
     symbols = ["🍒", "🍋", "🍇", "💎", "💗"]
-    result = [
-        random.choice(symbols)
-        for _ in range(3)
-    ]
+    result = [random.choice(symbols) for _ in range(3)]
 
     if len(set(result)) == 1:
         multiplier = 5
@@ -575,9 +523,7 @@ async def slots(
         multiplier = 0
 
     await _play_bet_game(
-        interaction,
-        bet,
-        "슬롯",
+        interaction, bet, "슬롯",
         f"🎰 {' | '.join(result)}",
         multiplier
     )
@@ -609,11 +555,8 @@ async def coin_flip(
     win = choice.value == result
 
     await _play_bet_game(
-        interaction,
-        bet,
-        "코인던지기",
-        f"🪙 결과: **{result}** · "
-        f"선택: **{choice.value}**",
+        interaction, bet, "코인던지기",
+        f"🪙 결과: **{result}** · 선택: **{choice.value}**",
         2 if win else 0
     )
 
@@ -644,9 +587,7 @@ async def odd_even(
     result = "홀" if number % 2 else "짝"
 
     await _play_bet_game(
-        interaction,
-        bet,
-        "홀짝",
+        interaction, bet, "홀짝",
         f"🔢 숫자 **{number}** · 결과 **{result}**",
         2 if choice.value == result else 0
     )
@@ -673,9 +614,7 @@ async def number_guess(
     number = random.randint(1, 10)
 
     await _play_bet_game(
-        interaction,
-        bet,
-        "숫자맞추기",
+        interaction, bet, "숫자맞추기",
         f"🎯 정답: **{number}** · 내 선택: **{guess}**",
         5 if guess == number else 0
     )
@@ -699,11 +638,8 @@ async def roulette(
     win = number >= 5
 
     await _play_bet_game(
-        interaction,
-        bet,
-        "룰렛",
-        f"🎡 룰렛 결과: **{number}** · "
-        f"{'당첨!' if win else '꽝!'}",
+        interaction, bet, "룰렛",
+        f"🎡 룰렛 결과: **{number}** · {'당첨!' if win else '꽝!'}",
         2 if win else 0
     )
 
@@ -725,22 +661,17 @@ async def chest(
     roll = random.random()
 
     if roll < 0.05:
-        multiplier = 5
-        label = "💎 전설의 보물!"
+        multiplier, label = 5, "💎 전설의 보물!"
     elif roll < 0.25:
-        multiplier = 2
-        label = "✨ 보물을 찾았어요!"
+        multiplier, label = 2, "✨ 보물을 찾았어요!"
     else:
-        multiplier = 0
-        label = "🪹 빈 상자예요."
+        multiplier, label = 0, "🪹 빈 상자예요."
 
     await _play_bet_game(
-        interaction,
-        bet,
-        "상자열기",
-        label,
-        multiplier
+        interaction, bet, "상자열기", label, multiplier
     )
+
+
 # =========================================================
 # /노예등록
 # =========================================================
@@ -779,11 +710,8 @@ async def slave_unregister(interaction: discord.Interaction):
     async with _pool().acquire() as conn:
         active = await conn.fetchval("""
             SELECT EXISTS (
-                SELECT 1
-                FROM economy_auctions
-                WHERE guild_id=$1
-                  AND seller_id=$2
-                  AND status='open'
+                SELECT 1 FROM economy_auctions
+                WHERE guild_id=$1 AND seller_id=$2 AND status='open'
             )
         """, interaction.guild_id, interaction.user.id)
 
@@ -799,10 +727,7 @@ async def slave_unregister(interaction: discord.Interaction):
             WHERE guild_id=$1 AND user_id=$2
         """, interaction.guild_id, interaction.user.id)
 
-    await _reply(
-        interaction,
-        "✅ 경매 등록 신청을 취소했어요."
-    )
+    await _reply(interaction, "✅ 경매 등록 신청을 취소했어요.")
 
 
 # =========================================================
@@ -825,8 +750,7 @@ async def auction_start(
     async with _pool().acquire() as conn:
         opted = await conn.fetchval("""
             SELECT EXISTS (
-                SELECT 1
-                FROM economy_slave_optins
+                SELECT 1 FROM economy_slave_optins
                 WHERE guild_id=$1 AND user_id=$2
             )
         """, guild_id, user_id)
@@ -840,18 +764,14 @@ async def auction_start(
 
         active = await conn.fetchval("""
             SELECT EXISTS (
-                SELECT 1
-                FROM economy_auctions
-                WHERE guild_id=$1
-                  AND seller_id=$2
-                  AND status='open'
+                SELECT 1 FROM economy_auctions
+                WHERE guild_id=$1 AND seller_id=$2 AND status='open'
             )
         """, guild_id, user_id)
 
         if active:
             return await _reply(
-                interaction,
-                "이미 진행 중인 경매가 있어요.",
+                interaction, "이미 진행 중인 경매가 있어요.",
                 ephemeral=True
             )
 
@@ -863,12 +783,9 @@ async def auction_start(
             VALUES ($1, $2, $3, $4, $4, $5)
             RETURNING id, ends_at
         """,
-            guild_id,
-            user_id,
-            interaction.channel_id,
+            guild_id, user_id, interaction.channel_id,
             start_price,
-            datetime.now(timezone.utc)
-            + timedelta(minutes=AUCTION_MINUTES)
+            datetime.now(timezone.utc) + timedelta(minutes=AUCTION_MINUTES)
         )
 
     embed = discord.Embed(
@@ -915,36 +832,35 @@ async def auction_bid(
             row = await conn.fetchrow("""
                 SELECT *
                 FROM economy_auctions
-                WHERE id=$1
-                  AND guild_id=$2
-                  AND status='open'
+                WHERE id=$1 AND guild_id=$2 AND status='open'
                 FOR UPDATE
             """, auction_id, guild_id)
 
             if not row:
                 return await _reply(
-                    interaction,
-                    "❌ 진행 중인 경매를 찾을 수 없어요.",
+                    interaction, "❌ 진행 중인 경매를 찾을 수 없어요.",
                     ephemeral=True
                 )
 
             if row["ends_at"] <= datetime.now(timezone.utc):
                 await conn.execute("""
-                    UPDATE economy_auctions
-                    SET status='ended'
+                    UPDATE economy_auctions SET status='ended'
                     WHERE id=$1
                 """, auction_id)
 
+                if row["highest_bidder"] is not None:
+                    await _change(
+                        conn, guild_id, row["highest_bidder"],
+                        row["highest_bid"],
+                        f"경매 #{auction_id} 종료 처리 환불"
+                    )
+
                 return await _reply(
-                    interaction,
-                    "⏰ 이 경매는 종료됐어요.",
+                    interaction, "⏰ 이 경매는 종료됐어요.",
                     ephemeral=True
                 )
 
-            if bidder_id in (
-                row["seller_id"],
-                row["highest_bidder"]
-            ):
+            if bidder_id in (row["seller_id"], row["highest_bidder"]):
                 return await _reply(
                     interaction,
                     "❌ 등록자 본인이나 현재 최고 입찰자는 입찰할 수 없어요.",
@@ -965,40 +881,32 @@ async def auction_bid(
                 )
 
             success = await _change(
-                conn,
-                guild_id,
-                bidder_id,
-                -amount,
-                f"경매 #{auction_id} 입찰 예약"
+                conn, guild_id, bidder_id,
+                -amount, f"경매 #{auction_id} 입찰 예약"
             )
 
             if not success:
                 return await _reply(
-                    interaction,
-                    "❌ 잔액이 부족해요.",
+                    interaction, "❌ 잔액이 부족해요.",
                     ephemeral=True
                 )
 
             if row["highest_bidder"] is not None:
                 await _change(
-                    conn,
-                    guild_id,
-                    row["highest_bidder"],
+                    conn, guild_id, row["highest_bidder"],
                     row["highest_bid"],
                     f"경매 #{auction_id} 최고입찰 교체 환불"
                 )
 
             await conn.execute("""
                 UPDATE economy_auctions
-                SET highest_bid=$2,
-                    highest_bidder=$3
+                SET highest_bid=$2, highest_bidder=$3
                 WHERE id=$1
             """, auction_id, amount, bidder_id)
 
     await _reply(
         interaction,
-        f"🔨 경매 **#{auction_id}**에 "
-        f"**{amount:,} 코인**으로 입찰했어요!"
+        f"🔨 경매 **#{auction_id}**에 **{amount:,} 코인**으로 입찰했어요!"
     )
 
 
@@ -1018,22 +926,19 @@ async def auction_status(
 ):
     async with _pool().acquire() as conn:
         row = await conn.fetchrow("""
-            SELECT *
-            FROM economy_auctions
+            SELECT * FROM economy_auctions
             WHERE id=$1 AND guild_id=$2
         """, auction_id, interaction.guild_id)
 
     if not row:
         return await _reply(
-            interaction,
-            "경매를 찾을 수 없어요.",
+            interaction, "경매를 찾을 수 없어요.",
             ephemeral=True
         )
 
     bidder = (
         f"<@{row['highest_bidder']}>"
-        if row["highest_bidder"]
-        else "아직 없음"
+        if row["highest_bidder"] else "아직 없음"
     )
 
     await _reply(
@@ -1063,18 +968,14 @@ async def auction_cancel(
     async with _pool().acquire() as conn:
         async with conn.transaction():
             row = await conn.fetchrow("""
-                SELECT *
-                FROM economy_auctions
-                WHERE id=$1
-                  AND guild_id=$2
-                  AND status='open'
+                SELECT * FROM economy_auctions
+                WHERE id=$1 AND guild_id=$2 AND status='open'
                 FOR UPDATE
             """, auction_id, interaction.guild_id)
 
             if not row:
                 return await _reply(
-                    interaction,
-                    "❌ 진행 중인 경매를 찾을 수 없어요.",
+                    interaction, "❌ 진행 중인 경매를 찾을 수 없어요.",
                     ephemeral=True
                 )
 
@@ -1092,16 +993,13 @@ async def auction_cancel(
 
             if row["highest_bidder"] is not None:
                 await _change(
-                    conn,
-                    interaction.guild_id,
-                    row["highest_bidder"],
-                    row["highest_bid"],
+                    conn, interaction.guild_id,
+                    row["highest_bidder"], row["highest_bid"],
                     f"경매 #{auction_id} 취소 환불"
                 )
 
             await conn.execute("""
-                UPDATE economy_auctions
-                SET status='cancelled'
+                UPDATE economy_auctions SET status='cancelled'
                 WHERE id=$1
             """, auction_id)
 
@@ -1109,7 +1007,6 @@ async def auction_cancel(
         interaction,
         f"✅ 경매 #{auction_id}을 취소하고 입찰금을 환불했어요."
     )
-
 
 # =========================================================
 # 채팅 활동 보상
@@ -1158,11 +1055,8 @@ async def on_message_economy(message):
             """, message.guild.id, message.author.id, current_time)
 
             await _change(
-                conn,
-                message.guild.id,
-                message.author.id,
-                CHAT_REWARD,
-                "채팅 활동 보상"
+                conn, message.guild.id, message.author.id,
+                CHAT_REWARD, "채팅 활동 보상"
             )
 
 
@@ -1193,8 +1087,7 @@ async def voice_rewards_loop():
                 continue
 
             members = [
-                member
-                for member in channel.members
+                member for member in channel.members
                 if not member.bot
                 and member.voice
                 and not member.voice.self_deaf
@@ -1208,11 +1101,8 @@ async def voice_rewards_loop():
                 async with conn.transaction():
                     for member in members:
                         await _change(
-                            conn,
-                            guild.id,
-                            member.id,
-                            VOICE_REWARD,
-                            "음성 활동 보상"
+                            conn, guild.id, member.id,
+                            VOICE_REWARD, "음성 활동 보상"
                         )
 
 
@@ -1267,9 +1157,7 @@ async def auction_settlement_loop():
 
                 if row["highest_bidder"] is not None:
                     await _change(
-                        conn,
-                        row["guild_id"],
-                        row["seller_id"],
+                        conn, row["guild_id"], row["seller_id"],
                         row["highest_bid"],
                         f"경매 #{row['id']} 낙찰 코인 수령"
                     )
@@ -1287,8 +1175,7 @@ async def auction_settlement_loop():
 
         if settled["highest_bidder"] is None:
             await channel.send(
-                f"⏰ 경매 **#{settled['id']}**가 "
-                "입찰 없이 종료됐어요.\n"
+                f"⏰ 경매 **#{settled['id']}**가 입찰 없이 종료됐어요.\n"
                 f"등록자: <@{settled['seller_id']}>"
             )
         else:
@@ -1308,7 +1195,7 @@ async def before_auction_settlement_loop():
 
 
 def start_economy_loops():
-    """bot.py의 main()에서 호출합니다."""
+    """봇이 준비된 뒤 경제 시스템 반복 작업을 시작합니다."""
     if not voice_rewards_loop.is_running():
         voice_rewards_loop.start()
 
@@ -1361,7 +1248,6 @@ async def lottery(interaction: discord.Interaction):
                     timedelta(hours=24)
                     - (current_time - row["used_at"])
                 )
-
                 hours = int(
                     remaining.total_seconds() // 3600
                 )
@@ -1391,17 +1277,12 @@ async def lottery(interaction: discord.Interaction):
 
             if prize:
                 await _change(
-                    conn,
-                    guild_id,
-                    user_id,
-                    prize,
-                    "무료 복권 당첨"
+                    conn, guild_id, user_id,
+                    prize, "무료 복권 당첨"
                 )
 
             balance = await _balance(
-                conn,
-                guild_id,
-                user_id
+                conn, guild_id, user_id
             )
 
     await _reply(
@@ -1432,21 +1313,16 @@ async def initial_quiz(interaction: discord.Interaction):
     ]
 
     initials, answer = random.choice(questions)
-    key = (
-        interaction.guild_id,
-        interaction.channel_id
-    )
+    key = (interaction.guild_id, interaction.channel_id)
 
     _active_quizzes[key] = {
         "answer": answer,
-        "expires": datetime.now(timezone.utc)
-        + timedelta(seconds=30)
+        "expires": datetime.now(timezone.utc) + timedelta(seconds=30)
     }
 
     await _reply(
         interaction,
-        f"🧩 **초성 퀴즈**\n"
-        f"초성: `{initials}`\n"
+        f"🧩 **초성 퀴즈**\n초성: `{initials}`\n"
         "30초 안에 `/초성정답` 명령어로 정답을 제출하세요. "
         "맞히면 30 코인!"
     )
@@ -1466,11 +1342,7 @@ async def initial_answer(
     interaction: discord.Interaction,
     answer: str
 ):
-    key = (
-        interaction.guild_id,
-        interaction.channel_id
-    )
-
+    key = (interaction.guild_id, interaction.channel_id)
     active = _active_quizzes.get(key)
 
     if (
@@ -1478,10 +1350,8 @@ async def initial_answer(
         or active["expires"] < datetime.now(timezone.utc)
     ):
         _active_quizzes.pop(key, None)
-
         return await _reply(
-            interaction,
-            "진행 중인 초성 퀴즈가 없어요.",
+            interaction, "진행 중인 초성 퀴즈가 없어요.",
             ephemeral=True
         )
 
@@ -1490,8 +1360,7 @@ async def initial_answer(
 
     if submitted != expected:
         return await _reply(
-            interaction,
-            "❌ 아쉬워요! 다시 생각해 봐요.",
+            interaction, "❌ 아쉬워요! 다시 생각해 봐요.",
             ephemeral=True
         )
 
@@ -1500,16 +1369,12 @@ async def initial_answer(
     async with _pool().acquire() as conn:
         async with conn.transaction():
             await _change(
-                conn,
-                interaction.guild_id,
-                interaction.user.id,
-                30,
+                conn, interaction.guild_id,
+                interaction.user.id, 30,
                 "초성 퀴즈 정답"
             )
-
             balance = await _balance(
-                conn,
-                interaction.guild_id,
+                conn, interaction.guild_id,
                 interaction.user.id
             )
 
@@ -1528,6 +1393,7 @@ async def initial_answer(
     name="운세",
     description="오늘의 운세를 확인합니다."
 )
+@app_commands.guild_only()
 async def fortune(interaction: discord.Interaction):
     messages = [
         "오늘은 작은 행운이 찾아올지도 몰라요 🍀",
@@ -1564,8 +1430,7 @@ async def coin_ranking(interaction: discord.Interaction):
 
     if not rows:
         return await _reply(
-            interaction,
-            "아직 코인 잔액이 있는 회원이 없어요."
+            interaction, "아직 코인 잔액이 있는 회원이 없어요."
         )
 
     lines = []
@@ -1573,18 +1438,11 @@ async def coin_ranking(interaction: discord.Interaction):
 
     for i, row in enumerate(rows, 1):
         member = interaction.guild.get_member(row["user_id"])
-
         name = (
             member.display_name
-            if member
-            else f"탈퇴한 회원({row['user_id']})"
+            if member else f"탈퇴한 회원({row['user_id']})"
         )
-
-        medal = (
-            medals[i - 1]
-            if i <= 3
-            else f"**{i}.**"
-        )
+        medal = medals[i - 1] if i <= 3 else f"**{i}.**"
 
         lines.append(
             f"{medal} {name} — **{row['balance']:,} 코인**"
@@ -1592,8 +1450,7 @@ async def coin_ranking(interaction: discord.Interaction):
 
     await _reply(
         interaction,
-        "💰 **하트 코인 부자 랭킹**\n"
-        + "\n".join(lines)
+        "💰 **하트 코인 부자 랭킹**\n" + "\n".join(lines)
     )
 
 
@@ -1604,16 +1461,12 @@ async def coin_ranking(interaction: discord.Interaction):
 if on_message_economy not in core.bot.extra_events.get(
     "on_message", []
 ):
-    core.bot.add_listener(
-        on_message_economy,
-        "on_message"
-    )
+    core.bot.add_listener(on_message_economy, "on_message")
 
 
 if on_voice_economy not in core.bot.extra_events.get(
     "on_voice_state_update", []
 ):
     core.bot.add_listener(
-        on_voice_economy,
-        "on_voice_state_update"
+        on_voice_economy, "on_voice_state_update"
     )
