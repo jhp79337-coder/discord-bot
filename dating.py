@@ -8,7 +8,7 @@ from core import *
 DATING_CATEGORY_NAME = "💗・소개팅"
 DATING_CHANNEL_PREFIX = "💞・소개팅"
 DATING_TIMEOUT_MINUTES = 10
-DATING_CREATOR_NAME = "주상혁"  # 소개팅 로비에 표시할 제작자 이름
+DATING_CREATOR_NAME = "백구"  # 소개팅 로비에 표시할 제작자 이름
 
 
 DATING_QUESTIONS = [
