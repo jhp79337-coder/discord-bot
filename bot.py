@@ -15,6 +15,7 @@ import experience
 import backup
 import status
 import romance
+import nickname_restore
 
 
 # =========================================================
