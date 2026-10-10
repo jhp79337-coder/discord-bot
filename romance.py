@@ -1225,7 +1225,7 @@ class RomanceChallengeView(discord.ui.View):
 
     def __init__(self, guild_id, challenger_id, target_id, partner_id):
         # timeout=None: 시간이 지나도 버튼이 만료되지 않음.
-        # 고정 custom_id를 사용해 재시작 후에도 같은 버튼으로 인식합니다.
+        # 버튼 custom_id는 기존 메시지와의 호환성을 위해 decorator 기본값을 유지합니다.
         super().__init__(timeout=None)
         self.guild_id = guild_id
         self.challenger_id = challenger_id
@@ -1544,6 +1544,122 @@ async def romance_challenge(ctx, member: discord.Member = None):
 
 
 # =========================================================
+# /쟁탈 슬래시 명령어 (기존 !쟁탈도 그대로 유지)
+# =========================================================
+
+@core.bot.tree.command(name="쟁탈", description="커플인 회원을 대상으로 비공개 쟁탈전을 신청합니다.")
+@discord.app_commands.guild_only()
+@discord.app_commands.describe(member="쟁탈하고 싶은 현재 커플 회원")
+async def romance_challenge_slash(interaction: discord.Interaction, member: discord.Member):
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    guild = interaction.guild
+    author = interaction.user
+
+    async def reply(message: str):
+        await interaction.followup.send(message, ephemeral=True)
+
+    if guild is None:
+        return await reply("서버 안에서만 사용할 수 있어요.")
+    if member.bot or member.id == author.id:
+        return await reply("봇이나 자기 자신에게 쟁탈을 신청할 수 없어요.")
+
+    pool = core.db_pool
+    if pool is None:
+        return await reply("데이터베이스에 연결되지 않았어요.")
+
+    now = datetime.now(timezone.utc).timestamp()
+    previous = _romance_challenge_cooldowns.get(author.id, 0)
+    if now - previous < ROMANCE_CHALLENGE_COOLDOWN:
+        remaining = int(ROMANCE_CHALLENGE_COOLDOWN - (now - previous))
+        return await reply(f"⏳ {remaining}초 후에 다시 신청할 수 있어요.")
+
+    partner_id = await _get_romance_couple_pair(guild.id, member.id)
+    if partner_id is None:
+        return await reply(f"💭 {member.mention}님은 현재 커플이 아니어서 쟁탈할 대상이 없어요.")
+    if partner_id == author.id:
+        return await reply("이미 본인이 상대방의 연인이에요.")
+    if await is_couple(guild.id, author.id):
+        return await reply("현재 커플인 상태에서는 쟁탈 신청을 할 수 없어요. 먼저 관계를 정리해 주세요.")
+
+    partner = guild.get_member(partner_id)
+    if partner is None:
+        try:
+            partner = await guild.fetch_member(partner_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return await reply("현재 연인을 서버에서 찾을 수 없어요.")
+
+    async with pool.acquire() as conn:
+        table_exists = await conn.fetchval("SELECT to_regclass('public.romance_challenge_logs') IS NOT NULL")
+        existing = False
+        if table_exists:
+            existing = await conn.fetchval("""
+                SELECT EXISTS (
+                    SELECT 1 FROM romance_challenge_logs
+                    WHERE guild_id = $1 AND target_id = $2
+                      AND created_at > NOW() - INTERVAL '1 hour'
+                )
+            """, guild.id, member.id)
+    if existing:
+        return await reply("이 대상은 최근 쟁탈전을 진행했어요. 잠시 후 다시 시도해 주세요.")
+
+    category = discord.utils.get(guild.categories, name=ROMANCE_CHALLENGE_CATEGORY)
+    if category is None:
+        try:
+            category = await guild.create_category(ROMANCE_CHALLENGE_CATEGORY)
+        except discord.Forbidden:
+            return await reply("채널을 만들 권한이 없어요. 봇의 채널 관리 권한을 확인해 주세요.")
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        author: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+        member: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+        partner: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+    }
+    try:
+        channel = await guild.create_text_channel(
+            name=f"{ROMANCE_CHALLENGE_PREFIX}-{author.display_name}"[:100],
+            category=category,
+            overwrites=overwrites,
+            topic=f"쟁탈 신청자:{author.id} | 대상:{member.id} | 현재 연인:{partner.id}",
+            reason="연애 쟁탈 시스템 (/쟁탈)",
+        )
+    except discord.Forbidden:
+        return await reply("비공개 채널을 만들 수 없어요. 봇의 채널 관리 권한을 확인해 주세요.")
+    except discord.HTTPException:
+        return await reply("쟁탈 채널 생성에 실패했어요. 잠시 후 다시 시도해 주세요.")
+
+    _romance_challenge_cooldowns[author.id] = now
+    embed = discord.Embed(
+        title="💘 연애 쟁탈전이 시작됐어요!",
+        description=(
+            f"💌 **쟁탈 신청자:** {author.mention}\n"
+            f"💗 **쟁탈 대상:** {member.mention}\n"
+            f"💑 **현재 연인:** {partner.mention}\n\n"
+            "이 채널은 위 세 사람만 볼 수 있어요.\n"
+            "쟁탈 대상 본인이 아래 버튼으로 최종 선택해 주세요.\n\n"
+            "• `신청자 선택` — 신청자와 새 커플이 됩니다.\n"
+            "• `현재 연인 선택` — 기존 커플 관계를 유지합니다."
+        ),
+        color=PINK,
+        timestamp=datetime.now(timezone.utc),
+    )
+    try:
+        await channel.send(
+            content=f"{author.mention} {member.mention} {partner.mention}",
+            embed=embed,
+            view=RomanceChallengeView(guild.id, author.id, member.id, partner.id),
+        )
+    except discord.HTTPException:
+        try:
+            await channel.delete(reason="쟁탈 안내 메시지 전송 실패")
+        except discord.HTTPException:
+            pass
+        return await reply("쟁탈 안내 메시지를 보내지 못했어요.")
+
+    await reply(f"💌 비공개 쟁탈방을 만들었어요: {channel.mention}")
+
+
+# =========================================================
 # 쟁탈 버튼 영구 등록 / 봇 재시작 후 복구
 # =========================================================
 
@@ -1584,6 +1700,8 @@ async def register_persistent_romance_challenge_views(target_bot=None):
                         view = RomanceChallengeView(
                             guild.id, challenger_id, target_id, partner_id
                         )
+                        # 기존 메시지의 버튼도 고정 custom_id를 사용하도록 갱신한 뒤 등록합니다.
+                        await message.edit(view=view)
                         target_bot.add_view(view, message_id=message.id)
                         _romance_challenge_registered_messages.add(message.id)
                         print(f"[ROMANCE] 쟁탈 버튼 복구 완료: 채널={channel.id}, 메시지={message.id}")
