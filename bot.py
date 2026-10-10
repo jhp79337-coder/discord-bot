@@ -56,6 +56,16 @@ async def main():
     # 명령어 안내 등록
     await help_menu.setup(bot)
 
+    # 소개팅 슬래시 명령어 등록
+    dating.setup(bot)
+
+    # 서버 전용 슬래시 명령어 동기화
+    guild = discord.Object(id=GUILD_ID)
+    bot.tree.copy_global_to(guild=guild)
+
+    synced = await bot.tree.sync(guild=guild)
+    print(f"[BOT] 슬래시 명령어 {len(synced)}개 동기화 완료")
+
     print("[BOT] Discord 연결 중...")
 
     # 자동 백업 시작
