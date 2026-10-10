@@ -1,7 +1,8 @@
-
+```python
 # =========================================================
 # Discord Server Management Bot
 # 분리된 메인 실행 파일
+# 제작자: 백구
 # =========================================================
 
 from core import *
@@ -44,7 +45,7 @@ async def main():
     # PostgreSQL에서 프로필 불러오기
     await load_profiles_from_db()
 
-    # PostgreSQL에 저장된 경고/소개팅/예외 상태 복원
+    # PostgreSQL에 저장된 경고 / 소개팅 / 예외 상태 복원
     await backup.load_runtime_state_from_db()
 
     # 봇 토큰 확인
@@ -52,6 +53,9 @@ async def main():
         raise RuntimeError(
             "DISCORD_TOKEN이 없습니다."
         )
+
+    # 새 명령어 안내 등록
+    await help_menu.setup(bot)
 
     print(
         "[BOT] Discord 연결 중..."
@@ -61,9 +65,7 @@ async def main():
     backup.start_backup_loop()
 
     # Discord 봇 실행
-    await bot.start(
-        TOKEN
-    )
+    await bot.start(TOKEN)
 
 
 # =========================================================
@@ -75,3 +77,4 @@ if __name__ == "__main__":
     asyncio.run(
         main()
     )
+```
