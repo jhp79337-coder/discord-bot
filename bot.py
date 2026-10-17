@@ -12,6 +12,7 @@
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from io import BytesIO
 
@@ -26,6 +27,9 @@ from core import *
 # =========================================================
 
 load_data()
+
+# 새 Discord 서버 ID
+GUILD_ID = int(os.getenv("GUILD_ID", "1561036401263382672"))
 
 # =========================================================
 # 서버 구조 백업 설정
@@ -515,11 +519,35 @@ async def on_ready():
     print(f"[BOT] 로그인 완료: {bot.user}")
     print(f"[BOT] 봇 ID: {bot.user.id}")
     print(f"[BOT] 연결된 서버: {len(bot.guilds)}개")
+    print(f"[BOT] 명령어 대상 서버 ID: {GUILD_ID}")
     print("=" * 45)
 
+    guild = discord.Object(id=GUILD_ID)
+
+    # true일 때만 전역 명령어를 한 번 삭제합니다.
+    # 삭제 전에 현재 코드의 명령어를 새 서버에 먼저 동기화합니다.
+    delete_global_once = os.getenv("DELETE_GLOBAL_COMMANDS_ONCE", "false").lower() == "true"
+
+    if delete_global_once:
+        try:
+            server_commands = bot.tree.copy_global_to(guild=guild)
+            synced_guild = await bot.tree.sync(guild=guild)
+            print(f"[SLASH] 새 서버 명령어 {len(synced_guild)}개 동기화 완료")
+
+            bot.tree.clear_commands(guild=None)
+            await bot.tree.sync()
+            print("[SLASH] 전역 명령어 전체 삭제 완료")
+            print("[SLASH] DELETE_GLOBAL_COMMANDS_ONCE를 false로 바꿔 주세요.")
+        except Exception as error:
+            print(f"[SLASH ERROR] {type(error).__name__}: {error}")
+        return
+
+    # 평상시에는 새 서버에만 동기화합니다.
+    # 전역 sync()를 실행하지 않으므로 삭제한 전역 명령어가 다시 등록되지 않습니다.
     try:
-        synced = await bot.tree.sync()
-        print(f"[SLASH] 전역 명령어 {len(synced)}개 동기화 완료")
+        bot.tree.copy_global_to(guild=guild)
+        synced = await bot.tree.sync(guild=guild)
+        print(f"[SLASH] 새 서버 명령어 {len(synced)}개 동기화 완료")
     except Exception as error:
         print(f"[SLASH ERROR] {type(error).__name__}: {error}")
 
