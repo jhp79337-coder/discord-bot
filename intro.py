@@ -1,14 +1,16 @@
+
 from core import *
 
 
 # =========================================================
 # 자기소개 파싱
+# 제작자: 백구
 # =========================================================
 
 def parse_intro(text):
     text = text.strip()
 
-    # 4자리 연도
+    # 4자리 연도: 2007남 / 2007 여 / 2007ㄴ / 2007ㅇ
     match = re.search(
         r"(?<!\d)(19\d{2}|20\d{2})\s*(남|여|ㄴ|ㅇ)(?!\S)",
         text
@@ -19,7 +21,7 @@ def parse_intro(text):
         gender = match.group(2)
 
     else:
-        # 2자리 연도
+        # 2자리 연도: 07남 / 07여
         match = re.search(
             r"(?<!\d)(\d{2})\s*(남|여|ㄴ|ㅇ)(?!\S)",
             text
@@ -34,6 +36,7 @@ def parse_intro(text):
         current_year = datetime.now().year
         current_short = current_year % 100
 
+        # 현재 연도보다 큰 두 자리 연도는 거부
         if short_year > current_short:
             return None
 
@@ -55,12 +58,27 @@ def parse_intro(text):
 
 
 # =========================================================
+# 역할 적용 도우미
+# 역할 ID가 비어 있으면 건너뜀
+# =========================================================
+
+async def apply_optional_role(member, role_key, add=True):
+    role_id = ROLES.get(role_key)
+
+    if not role_id:
+        print(f"[INTRO] 역할 ID 미설정: {role_key}")
+        return
+
+    await manage_role(member, role_id, add)
+
+
+# =========================================================
 # 자기소개 역할 적용
 # =========================================================
 
 async def apply_intro_roles(member, year, gender):
 
-    # 기존 역할 제거
+    # 기존 인증 관련 역할 제거
     for key in (
         "unverified",
         "male",
@@ -68,55 +86,60 @@ async def apply_intro_roles(member, year, gender):
         "adult",
         "minor"
     ):
-        await manage_role(
+        await apply_optional_role(
             member,
-            ROLES[key],
+            key,
             False
         )
 
-    # 성별 역할
+    # 성별 역할 적용
     if gender == "남":
-        await manage_role(
+        await apply_optional_role(
             member,
-            ROLES["male"],
+            "male",
             True
         )
     else:
-        await manage_role(
+        await apply_optional_role(
             member,
-            ROLES["female"],
+            "female",
             True
         )
 
-    # 나이 역할
+    # 나이 역할 적용
     if age_type(year) == "성인":
-        await manage_role(
+        await apply_optional_role(
             member,
-            ROLES["adult"],
+            "adult",
             True
         )
     else:
-        await manage_role(
+        await apply_optional_role(
             member,
-            ROLES["minor"],
+            "minor",
             True
         )
 
-    # 자기소개 완료
-    await manage_role(
+    # 자기소개 완료 역할
+    # core.py의 ROLES에 intro_complete ID가 있을 때만 적용
+    await apply_optional_role(
         member,
-        ROLES["intro_complete"],
+        "intro_complete",
         True
     )
 
 
 # =========================================================
-# 자기소개 완료
+# 자기소개 완료 처리
 # =========================================================
 
 async def intro_complete(message, year, gender):
 
     member = message.author
+
+    # 서버 멤버만 허용
+    if not isinstance(member, discord.Member):
+        return
 
     data = member_data(member)
 
@@ -141,7 +164,7 @@ async def intro_complete(message, year, gender):
         gender
     )
 
-    # 안내
+    # 안내 메시지
     await message.channel.send(
         f"🖤 {member.mention} 자기소개 정보를 반영했어요 ♡\n\n"
         f"`{year}년생` · "
@@ -153,7 +176,7 @@ async def intro_complete(message, year, gender):
 
 
 # =========================================================
-# 멤버 입장
+# 멤버 입장 처리
 # =========================================================
 
 @bot.event
@@ -165,27 +188,32 @@ async def on_member_join(member):
     if member.bot:
         return
 
-    members[str(member.id)] = {
-        "joined_at": iso(now()),
+    joined_at = iso(now())
+
+    data = {
+        "joined_at": joined_at,
         "intro_completed": False,
         "birth_year": None,
         "gender": None,
-        "last_activity": iso(now()),
+        "last_activity": joined_at,
         "is_existing_member": False,
         "kicked": False
     }
 
+    # 메모리 데이터 갱신
+    members[str(member.id)] = data
+
     # PostgreSQL 저장
     await save_member_to_db(
         member.id,
-        members[str(member.id)]
+        data
     )
 
-    # 미인증 역할
-    await manage_role(
+    # 미인증 역할 부여
+    await apply_optional_role(
         member,
-        ROLES["unverified"],
+        "unverified",
         True
     )
 
-    print(f"[JOIN] {member}")
+    print(f"[JOIN] {member} ({member.id})")
