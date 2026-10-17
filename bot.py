@@ -20,6 +20,7 @@ import discord
 from discord import app_commands
 
 import core
+import intro
 from core import *
 
 # =========================================================
